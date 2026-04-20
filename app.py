@@ -1,51 +1,86 @@
 import streamlit as st
 import pandas as pd
+import random
 
-st.title("Martingale Strategy Dashboard")
+st.set_page_config(page_title="NBA 4th Quarter Analysis", page_icon="🏀")
 
-# 1. Setup Session State for persistent data
+st.title("🏀 NBA 4th Quarter Betting Strategy")
+
+# --- STRATEGY ANALYSIS SECTION ---
+st.header("📊 Team Analysis (4th Quarter)")
+st.info("Strategy: Over 51.5 Total Points in Q4")
+
+# Simulated Team Data - In a real app, you'd fetch this from an API
+team_data = {
+    "Team": ["Lakers", "Celtics", "Warriors", "Nuggets", "Suns"],
+    "Avg Q4 Points": [54.2, 51.1, 56.5, 49.8, 53.0],
+    "Hit Rate (Over 51.5)": ["72%", "48%", "81%", "42%", "65%"],
+    "Trend": ["🔥 Up", "❄️ Down", "🔥 Up", "➖ Stable", "🔥 Up"]
+}
+analysis_df = pd.DataFrame(team_data)
+
+# Display Analysis Table
+st.table(analysis_df)
+
+# --- BETTING CALCULATOR WITH 4Q ICONS ---
+st.divider()
+st.subheader("⏱️ Live Session Tracker: Q4")
+
 if 'history' not in st.session_state:
     st.session_state.history = []
-if 'current_bet' not in st.session_state:
-    st.session_state.current_bet = 10.0  # Default base bet
+if 'current_stake' not in st.session_state:
+    st.session_state.current_stake = 10.0
 
-# 2. Sidebar Inputs
-st.sidebar.header("Settings")
-base_bet = st.sidebar.number_input("Base Bet Amount", value=10.0)
-target_profit = st.sidebar.number_input("Target Profit", value=100.0)
-
-# 3. Betting Controls
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("✅ Win"):
-        st.session_state.history.append({"Result": "Win", "Stake": st.session_state.current_bet})
-        st.session_state.current_bet = base_bet  # Reset on win
+    base_bet = st.number_input("Base Stake ($)", value=10.0)
+    target_q4_total = 51.5
+    st.caption(f"Strategy Target: {target_q4_total} Points")
 
-with col2:
-    if st.button("❌ Loss"):
-        st.session_state.history.append({"Result": "Loss", "Stake": st.session_state.current_bet})
-        st.session_state.current_bet *= 2  # Double on loss
+# --- ACTION BUTTONS ---
+c1, c2, c3 = st.columns(3)
 
-with col3:
-    if st.button("Reset Session"):
+with c1:
+    if st.button("✅ Q4 HIT"):
+        st.session_state.history.append({
+            "Period": "4th Qtr",
+            "Result": "WIN",
+            "Stake": st.session_state.current_stake,
+            "Icon": "💰"
+        })
+        st.session_state.current_stake = base_bet
+
+with c2:
+    if st.button("❌ Q4 MISS"):
+        st.session_state.history.append({
+            "Period": "4th Qtr",
+            "Result": "LOSS",
+            "Stake": st.session_state.current_stake,
+            "Icon": "📉"
+        })
+        st.session_state.current_stake *= 2 # Martingale doubling logic
+
+with c3:
+    if st.button("🗑️ Clear"):
         st.session_state.history = []
-        st.session_state.current_bet = base_bet
+        st.session_state.current_stake = base_bet
 
-# 4. Data Processing
+# --- RESULTS & PERCENTAGES ---
 if st.session_state.history:
     df = pd.DataFrame(st.session_state.history)
     
-    # Simple profit calculation (assuming 2.00 decimal odds for Martingale)
-    df['Profit/Loss'] = df.apply(lambda x: x['Stake'] if x['Result'] == 'Win' else -x['Stake'], axis=1)
-    df['Cumulative Profit'] = df['Profit/Loss'].cumsum()
+    total_bets = len(df)
+    wins = len(df[df['Result'] == 'WIN'])
+    win_percentage = (wins / total_bets) * 100
 
-    # 5. Display Stats
-    st.metric("Next Recommended Bet", f"${st.session_state.current_bet}")
-    st.metric("Total Profit/Loss", f"${df['Cumulative Profit'].iloc[-1]}")
+    # Display Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Next Bet", f"${st.session_state.current_stake:.2f}")
+    m2.metric("Win Rate", f"{win_percentage:.1f}%")
+    m3.metric("Total Bets", total_bets)
 
-    # 6. Performance Chart
-    st.line_chart(df['Cumulative Profit'])
-    st.table(df)
+    st.write("### 📝 Recent Session History")
+    st.dataframe(df)
 else:
-    st.info("Start by logging your first bet result.")
+    st.write("No active bets in this session. Select 'HIT' or 'MISS' to begin.")
