@@ -1,34 +1,51 @@
-def calculate_bet(stake, odds, odds_type='decimal'):
-    """
-    Calculates the potential win and net profit.
-    :param stake: The amount of money wagered.
-    :param odds: The odds offered (Decimal or American).
-    :param odds_type: 'decimal' or 'american'.
-    """
-    if odds_type == 'decimal':
-        # Potential Win = Stake * Decimal Odds
-        potential_win = stake * odds
-    
-    elif odds_type == 'american':
-        if odds > 0:
-            # Positive American odds (e.g., +150)
-            potential_win = stake * (1 + (odds / 100))
-        else:
-            # Negative American odds (e.g., -110)
-            potential_win = stake * (1 + (100 / abs(odds)))
-    
-    else:
-        return "Unsupported odds type."
+import streamlit as st
+import pandas as pd
 
-    net_profit = potential_win - stake
-    
-    return {
-        "Stake": f"${stake:.2f}",
-        "Potential Win (Total Payout)": f"${potential_win:.2f}",
-        "Net Profit": f"${net_profit:.2f}"
-    }
+st.title("Martingale Strategy Dashboard")
 
-# Example usage:
-# A $100 bet on odds of 2.50
-result = calculate_bet(100, 2.50)
-print(result)
+# 1. Setup Session State for persistent data
+if 'history' not in st.session_state:
+    st.session_state.history = []
+if 'current_bet' not in st.session_state:
+    st.session_state.current_bet = 10.0  # Default base bet
+
+# 2. Sidebar Inputs
+st.sidebar.header("Settings")
+base_bet = st.sidebar.number_input("Base Bet Amount", value=10.0)
+target_profit = st.sidebar.number_input("Target Profit", value=100.0)
+
+# 3. Betting Controls
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("✅ Win"):
+        st.session_state.history.append({"Result": "Win", "Stake": st.session_state.current_bet})
+        st.session_state.current_bet = base_bet  # Reset on win
+
+with col2:
+    if st.button("❌ Loss"):
+        st.session_state.history.append({"Result": "Loss", "Stake": st.session_state.current_bet})
+        st.session_state.current_bet *= 2  # Double on loss
+
+with col3:
+    if st.button("Reset Session"):
+        st.session_state.history = []
+        st.session_state.current_bet = base_bet
+
+# 4. Data Processing
+if st.session_state.history:
+    df = pd.DataFrame(st.session_state.history)
+    
+    # Simple profit calculation (assuming 2.00 decimal odds for Martingale)
+    df['Profit/Loss'] = df.apply(lambda x: x['Stake'] if x['Result'] == 'Win' else -x['Stake'], axis=1)
+    df['Cumulative Profit'] = df['Profit/Loss'].cumsum()
+
+    # 5. Display Stats
+    st.metric("Next Recommended Bet", f"${st.session_state.current_bet}")
+    st.metric("Total Profit/Loss", f"${df['Cumulative Profit'].iloc[-1]}")
+
+    # 6. Performance Chart
+    st.line_chart(df['Cumulative Profit'])
+    st.table(df)
+else:
+    st.info("Start by logging your first bet result.")
