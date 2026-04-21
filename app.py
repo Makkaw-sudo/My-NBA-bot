@@ -1,84 +1,70 @@
 import streamlit as st
-import pandas as pd
 
-# 1. Advanced Analysis Logic: Calculate probability based on Team A + Team B avg
-def get_strategy_probability(team_a_avg, team_b_avg, target=51.5):
-    combined_avg = team_a_avg + team_b_avg
-    # Simple probability: If avg is 5 points over target, hit rate is ~85%
-    diff = combined_avg - target
-    base_prob = 50.0
-    probability = base_prob + (diff * 5)
-    return min(max(probability, 10.0), 99.0) # Cap between 10% and 99%
+def calculate_martingale(initial_stake, current_step, odds):
+    # Total loss is the sum of all previous stakes
+    # For this simulation, we calculate the next stake needed to recover and profit
+    # Formula: Stake = (Total Loss + Target Profit) / (Odds - 1)
+    
+    target_profit = initial_stake
+    # Simple doubling logic or odds-adjusted logic
+    if odds > 2.0:
+        next_move = (initial_stake * (2 ** current_step)) / (odds - 1)
+    else:
+        next_move = initial_stake * (2 ** current_step)
+        
+    return round(next_move, 2)
 
-st.title("🏀 Pro Analysis: Daily Game Hub")
+st.set_page_config(page_title="NBA Quarter Martingale Analyzer", layout="centered")
 
-# --- DAILY GAME ANALYSIS ---
-st.header("📋 Today's Game Predictions")
-# Example Data: In a full app, this would fetch from an API
-games = [
-    {"Match": "Cavaliers vs Raptors", "Q1 Avg": 58.9, "Q4 Avg": 54.2},
-    {"Match": "Nuggets vs Timberwolves", "Q1 Avg": 59.9, "Q4 Avg": 49.8},
-    {"Match": "Knicks vs Hawks", "Q1 Avg": 60.0, "Q4 Avg": 51.1}
-]
+st.title("🏀 NBA Quarter-by-Quarter Analyzer")
+st.markdown("""
+This tool analyzes the **Martingale Strategy** across the four quarters of an NBA game. 
+Input the game data below to calculate the next logical move.
+""")
 
-selected_game = st.selectbox("Select Game for Analysis", [g["Match"] for g in games])
-selected_q = st.radio("Target Quarter", ["1st Quarter", "4th Quarter"])
+with st.sidebar:
+    st.header("Parameters")
+    base_unit = st.number_input("Base Stake (Unit)", min_value=1.0, value=10.0)
+    current_q = st.selectbox("Current Quarter", [1, 2, 3, 4])
+    game_status = st.radio("Result of previous move:", ["Start of Game", "Won", "Lost"])
 
-# Dynamic Analysis Output
-game_info = next(g for g in games if g["Match"] == selected_game)
-q_stat = game_info["Q1 Avg"] if selected_q == "1st Quarter" else game_info["Q4 Avg"]
-hit_prob = get_strategy_probability(q_stat/2, q_stat/2) # Simplified for example
+# Logic for Strategy Suggestions
+if 'history' not in st.session_state:
+    st.session_state.history = []
 
-st.metric(label=f"Probability to hit Over 51.5 in {selected_q}", value=f"{hit_prob:.1f}%")
+st.subheader(f"Analysis: Quarter {current_q}")
 
-if hit_prob > 70:
-    st.success("🔥 High Probability Matchup")
-elif hit_prob > 50:
-    st.warning("⚠️ Moderate Risk - Watch Live")
-else:
-    st.error("❄️ Low Probability - Skip this Quarter")
+col1, col2 = st.columns(2)
 
-# --- MULTI-GAME STRATEGY TRACKER ---
+with col1:
+    live_odds = st.number_input("Live Odds for this Quarter", min_value=1.01, value=1.90)
+    
+with col2:
+    if game_status == "Won":
+        st.success("Strategy Reset. Start back at Quarter 1 with Base Unit.")
+        suggestion = base_unit
+    elif game_status == "Lost":
+        # Calculate progression based on the quarter step
+        suggestion = calculate_martingale(base_unit, current_q - 1, live_odds)
+        st.warning(f"Next Logical Move: {suggestion} units")
+    else:
+        st.info(f"Initial Move: {base_unit} units")
+        suggestion = base_unit
+
+# Probability Analysis
 st.divider()
-st.subheader("🔄 Live Strategy & Risk Alerts")
+st.subheader("Statistical Probability")
+implied_prob = (1 / live_odds) * 100
+st.write(f"Implied probability for this move: **{implied_prob:.2f}%**")
 
-if 'consecutive_losses' not in st.session_state:
-    st.session_state.consecutive_losses = 0
-if 'bankroll' not in st.session_state:
-    st.session_state.bankroll = 1000.0
+# Risk Warning
+st.error("⚠️ **Risk Factor:** Martingale assumes infinite capital. In NBA, if all 4 quarters lose, the 'Table Max' or bankroll depletion is a significant risk.")
 
-# Alert System
-if st.session_state.consecutive_losses >= 3:
-    st.error(f"🚨 CRITICAL ALERT: {st.session_state.consecutive_losses} consecutive losses. Next stake is very high!")
-elif st.session_state.consecutive_losses > 0:
-    st.info(f"⚡ Recovery Mode: Moving to Level {st.session_state.consecutive_losses + 1}")
+# Table for progression visualization
+st.subheader("Progression Table (Typical 1.90 Odds)")
+data = []
+for i in range(1, 5):
+    step_stake = round(base_unit * (2.1 ** (i-1)), 2) # Adjusted for standard juice
+    data.append({"Quarter": i, "Estimated Stake": step_stake, "Total Risk": round(step_stake * i, 2)})
 
-base_bet = st.number_input("Base Bet ($)", value=10.0)
-current_stake = base_bet * (2 ** st.session_state.consecutive_losses)
-
-st.write(f"### Current Stake: **${current_stake:.2f}**")
-
-# Interaction
-c1, c2, c3 = st.columns(3)
-with c1:
-    if st.button("✅ WIN"):
-        st.session_state.bankroll += current_stake
-        st.session_state.consecutive_losses = 0
-        st.balloons()
-with c2:
-    if st.button("❌ LOSE"):
-        st.session_state.bankroll -= current_stake
-        st.session_state.consecutive_losses += 1
-with c3:
-    if st.button("Reset"):
-        st.session_state.consecutive_losses = 0
-
-# --- SIMPLE BREAKDOWN ---
-st.divider()
-with st.expander("📝 Strategy Breakdown"):
-    st.write(f"""
-    1. **The Goal:** Hit a single win within a game sequence.
-    2. **The Math:** If a quarter misses, we double the stake (${current_stake} ➔ ${current_stake*2}).
-    3. **The Risk:** Your current streak is {st.session_state.consecutive_losses} losses.
-    4. **Recommendation:** Only play games with >65% probability for the chosen quarter.
-    """)
+st.table(data)
