@@ -4,26 +4,74 @@ import pandas as pd
 import plotly.graph_objects as go
 import time
 
-# --- 1. SETTINGS & DYNAMIC THEME ---
-st.set_page_config(page_title="QUANTUM TITAN V11 - PRO", layout="wide")
-API_KEY = "4d1e72e9dc2207f0ae744c61dfa51576"
+# --- 1. SETTINGS & HIGH-END TERMINAL THEME ---
+st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0e14; color: #e6edf3; }
-    .dynamic-card {
-        background: linear-gradient(135deg, #1e2631 0%, #0d1117 100%);
-        padding: 35px; border-radius: 25px; border: 2px solid #58a6ff;
-        text-align: center; box-shadow: 0 15px 50px rgba(0,0,0,0.9);
-        margin-bottom: 20px;
+    /* Main Background & Font */
+    .stApp { background-color: #05070a; color: #e6edf3; font-family: 'Inter', sans-serif; }
+    
+    /* The Cockpit Card */
+    .titan-card {
+        background: linear-gradient(160deg, #0d1117 0%, #161b22 100%);
+        padding: 25px; 
+        border-radius: 15px; 
+        border-left: 5px solid #58a6ff;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        margin-bottom: 25px;
     }
-    .bet-cmd { font-size: 52px; font-weight: 900; color: #ffffff; }
-    .value-tag { color: #3fb950; font-weight: bold; border: 1px solid #3fb950; padding: 5px 10px; border-radius: 5px; }
-    .safe-point { background: #161b22; padding: 12px; border-radius: 10px; border: 1px solid #3fb950; color: #3fb950; font-family: monospace; }
+
+    /* Glowing Signal for "GO" */
+    .signal-go {
+        color: #3fb950;
+        font-size: 48px;
+        font-weight: 900;
+        text-shadow: 0 0 20px rgba(63, 185, 80, 0.4);
+        font-family: 'Courier New', monospace;
+        margin: 10px 0;
+    }
+    
+    .signal-wait {
+        color: #8b949e;
+        font-size: 48px;
+        font-weight: 900;
+        font-family: 'Courier New', monospace;
+        margin: 10px 0;
+    }
+
+    /* The 'Safe Ladder' Boxes */
+    .ladder-box {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        padding: 12px;
+        border-radius: 8px;
+        text-align: center;
+        min-width: 110px;
+    }
+
+    /* Value Badge */
+    .value-badge {
+        background-color: rgba(56, 139, 253, 0.15);
+        color: #58a6ff;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: bold;
+        border: 1px solid #58a6ff;
+    }
+
+    /* Sidebar Background */
+    section[data-testid="stSidebar"] {
+        background-color: #0d1117 !important;
+        border-right: 1px solid #30363d;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ADVANCED PACE DATABASE ---
+# --- 2. CONFIGURATION & DATA DNA ---
+API_KEY = "4d1e72e9dc2207f0ae744c61dfa51576"
+
 TEAM_PACE = {
     "Los Angeles Lakers": 29.8, "Houston Rockets": 27.5,
     "San Antonio Spurs": 29.1, "Portland Trail Blazers": 26.9,
@@ -32,117 +80,120 @@ TEAM_PACE = {
     "Boston Celtics": 30.5, "Philadelphia 76ers": 28.8
 }
 
-# --- 3. STRONG ANALYSIS CALCULATORS ---
+# --- 3. ANALYTICS ENGINE (KELLY + PACE LOGIC) ---
 def calculate_kelly(prob, odds):
     b = odds - 1
     q = 1 - prob
     return max(0, (b * prob - q) / b)
 
-# --- 4. THE ANALYTICS ENGINE (DYNAMIC V2) ---
 def analyze_game_titan(game, step, base, schedule_type, my_win_prob, bankroll, kelly_fraction):
     h_team = game.get('home_team')
     a_team = game.get('away_team')
     
-    # FATIGUE MULTIPLIER (Strong Analysis Factor)
-    # If a team is on a back-to-back, we reduce the expected scoring pace
+    # Apply Fatigue Factor
     fatigue_mod = 0.96 if schedule_type == "Tired (B2B/3in4)" else 1.0
     
     h_pace = TEAM_PACE.get(h_team, 28.5)
     a_pace = TEAM_PACE.get(a_team, 28.5)
     projected_q_total = round((h_pace + a_pace) * fatigue_mod, 1)
 
-    # RECOVERY CALC (Martingale)
+    # Recovery Logic (Martingale)
     odds_1xbet = 1.91 
     prev_losses = sum([base * (2**i) for i in range(step - 1)])
-    martingale_stake = round((prev_losses + base) / (odds_1xbet - 1), 2)
+    m_stake = round((prev_losses + base) / (odds_1xbet - 1), 2)
     
-    # KELLY CRITERION CALC (Scientific Stake)
+    # Kelly Logic (Value Betting)
     kelly_pct = calculate_kelly(my_win_prob / 100, odds_1xbet)
-    kelly_stake = round(bankroll * kelly_pct * kelly_fraction, 2)
+    k_stake = round(bankroll * kelly_pct * kelly_fraction, 2)
 
-    # VALUE DETECTION
+    # Edge Analysis
     implied_prob = (1 / odds_1xbet) * 100
     is_value = my_win_prob > implied_prob
-
-    # LIVE SCORE DETECTION
+    
+    # Live Status
     scores = game.get('scores', [])
     h_score = int(scores[0]['score']) if scores else 0
     a_score = int(scores[1]['score']) if scores else 0
-    live_total = h_score + a_score
-
-    # ENTRY POINT LADDER
-    ultra = projected_q_total - 4.5
-    balanced = projected_q_total - 2.5
-    target = projected_q_total - 0.5
+    
+    # Target Lines
+    entries = [projected_q_total - 4.5, projected_q_total - 2.5, projected_q_total - 0.5]
 
     return {
-        "m_stake": martingale_stake, "k_stake": kelly_stake, 
+        "m_stake": m_stake, "k_stake": k_stake, 
         "proj": projected_q_total, "matchup": f"{h_team} vs {a_team}",
-        "live": f"{h_score}-{a_score}", "entries": [ultra, balanced, target],
+        "live": f"{h_score}-{a_score}", "entries": entries,
         "is_value": is_value, "val_gap": round(my_win_prob - implied_prob, 1),
-        "status": "GO" if is_value and (live_total > 0 or "Lakers" in h_team) else "WAIT"
+        "status": "GO" if is_value and (h_score + a_score > 0 or "Lakers" in h_team) else "WAIT"
     }
 
-# --- 5. TERMINAL INTERFACE ---
+# --- 4. TERMINAL INTERFACE ---
 with st.sidebar:
     st.markdown("<h2 style='color:#58a6ff;'>🚀 TITAN CONTROL</h2>", unsafe_allow_html=True)
-    bankroll_total = st.number_input("Total Bankroll ($)", value=1000.0)
+    bankroll_total = st.number_input("Bankroll ($)", value=1000.0)
     base_val = st.number_input("Base Unit ($)", value=10.0)
     step_val = st.number_input("Martingale Step", 1, 8, 1)
     
     st.divider()
     st.markdown("### 🧠 STRONG ANALYSIS")
     sched = st.selectbox("Schedule Status", ["Normal/Rested", "Tired (B2B/3in4)"])
-    win_p = st.slider("My Win Probability (%)", 30, 90, 55)
-    kelly_f = st.slider("Kelly Safety (0.5 = Half Kelly)", 0.1, 1.0, 0.5)
+    win_p = st.slider("My Win Probability (%)", 30, 95, 55)
+    kelly_f = st.slider("Kelly Fraction", 0.1, 1.0, 0.5)
     
     st.divider()
-    auto_refresh = st.toggle("Auto-Sync (Every 30s)", value=False)
-    sync = st.button("🔄 MANUAL SCAN", use_container_width=True)
+    auto_refresh = st.toggle("Auto-Sync (30s)", value=False)
+    sync = st.button("🔄 INITIATE SCAN", use_container_width=True)
 
-st.title("🕹️ Advanced Decision Terminal")
+# Page Header
+st.markdown("<h1 style='text-align: center; color: #58a6ff; letter-spacing: 5px; margin-bottom:0;'>QUANTUM TITAN V11</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #8b949e; margin-bottom:40px;'>PACE-DRIVEN PROBABILISTIC ANALYSIS ENGINE</p>", unsafe_allow_html=True)
 
 if sync or auto_refresh:
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=3"
-    raw_data = requests.get(url).json()
-    
-    if raw_data:
-        for i, game in enumerate(raw_data):
-            res = analyze_game_titan(game, step_val, base_val, sched, win_p, bankroll_total, kelly_f)
-            
-            if res:
-                # Value Indicator
-                val_text = f"VALUE DETECTED (+{res['val_gap']}%)" if res['is_value'] else "NO VALUE"
-                val_color = "#3fb950" if res['is_value'] else "#f85149"
-
-                st.markdown(f"""
-                    <div class="dynamic-card">
-                        <p style="color:#8b949e; letter-spacing:2px;">DYNAMIC PACE ANALYSIS: {res['matchup']}</p>
-                        <div style="margin-bottom:10px;"><span class="value-tag" style="border-color:{val_color}; color:{val_color};">{val_text}</span></div>
-                        <div class="bet-cmd">{res['status']}: BET <span style="color:#3fb950;">${res['k_stake']}</span></div>
-                        <p style="font-size:18px;">Strategy: Kelly Stake (${res['k_stake']}) vs Martingale (${res['m_stake']})</p>
-                        <p>Unique Game Projection: <b>{res['proj']} pts</b> (Adj. for {sched})</p>
-                        <hr style="border:0.5px solid #30363d;">
-                        <p style="font-size:12px; color:#8b949e;">3 SAFEST ENTRY POINTS FOR THIS MATCHUP:</p>
-                        <div style="display: flex; justify-content: center; gap: 15px;">
-                            <div class="safe-point">1. OVER {res['entries'][0]}<br><small>ULTRA-SAFE</small></div>
-                            <div class="safe-point">2. OVER {res['entries'][1]}<br><small>BALANCED</small></div>
-                            <div class="safe-point">3. OVER {res['entries'][2]}<br><small>TARGET</small></div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
+    try:
+        raw_data = requests.get(url).json()
+        
+        if raw_data:
+            cols = st.columns(2)
+            for i, game in enumerate(raw_data):
+                res = analyze_game_titan(game, step_val, base_val, sched, win_p, bankroll_total, kelly_f)
                 
-                # Confidence Gauge
-                fig = go.Figure(go.Indicator(
-                    mode = "gauge+number", value = win_p,
-                    title = {'text': "Confidence Score"},
-                    gauge = {'axis': {'range': [0, 100]}, 'bar': {'color': "#58a6ff"}}
-                ))
-                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"}, height=220, margin=dict(t=0,b=0))
-                st.plotly_chart(fig, use_container_width=True, key=f"titan_{i}")
+                with cols[i % 2]:
+                    # Dynamic Visual Card
+                    status_class = "signal-go" if res['status'] == "GO" else "signal-wait"
+                    val_color = "#3fb950" if res['is_value'] else "#f85149"
+                    
+                    st.markdown(f"""
+                        <div class="titan-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: #8b949e; font-family: monospace; font-size:12px;">STREAMING // {res['matchup']}</span>
+                                <span class="value-badge" style="border-color:{val_color}; color:{val_color};">EDGE: {res['val_gap']}%</span>
+                            </div>
+                            
+                            <div style="padding: 15px 0;">
+                                <div style="color: {val_color}; font-size: 11px; letter-spacing: 2px;">SYSTEM_STATUS: {res['status']}</div>
+                                <div class="{status_class}">BET ${res['k_stake'] if res['status'] == "GO" else "0.00"}</div>
+                                <div style="color: #f0f6fc; font-size: 16px;">Target Quarter Over: <span style="color:#58a6ff;">{res['entries'][1]}</span></div>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                                <div class="ladder-box"><small style="color:#8b949e;">ULTRA</small><br><b style="color:#3fb950;">{res['entries'][0]}</b></div>
+                                <div class="ladder-box"><small style="color:#8b949e;">BALANCED</small><br><b>{res['entries'][1]}</b></div>
+                                <div class="ladder-box"><small style="color:#8b949e;">RISKY</small><br><b style="color:#f85149;">{res['entries'][2]}</b></div>
+                            </div>
+                            
+                            <div style="margin-top: 20px; font-size: 11px; color: #8b949e; font-family: monospace;">
+                                PACE_PROJ: {res['proj']} | LIVE: {res['live']} | STRAT: KELLY_{kelly_f}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("No active games found for the selected period.")
+            
+    except Exception as e:
+        st.error(f"API Connection Error: {e}")
     
     if auto_refresh:
         time.sleep(30)
         st.rerun()
 else:
-    st.info("System Standby. Adjust 'My Win Probability' in the sidebar and initiate Scan.")
+    st.info("System on Standby. Initiate Scan from the Titan Control sidebar.")
