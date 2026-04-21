@@ -50,10 +50,10 @@ with tab1:
         df = st.session_state.get('daily_df', pd.DataFrame())
 
     if not df.empty:
-        # This line is the fix! .map instead of .applymap
+        # This line uses .map (NOT applymap)
         st.table(df.style.map(highlight_safe, subset=['Over Prob']))
     else:
-        st.info("Click 'Sync' to load data.")
+        st.info("Click 'Sync' to load real data.")
 
 with tab2:
     st.header("Martingale Calculator")
@@ -71,7 +71,12 @@ with tab2:
 
     st.metric("Suggested Move", f"{move}")
     
-    if st.button("🔴 Log Loss"):
-        st.session_state.cumulative_loss += move
-    if st.button("🟢 Log Win"):
-        st.session_state.cumulative_loss = 0.0
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🔴 Log Loss"):
+            st.session_state.cumulative_loss += move
+            st.rerun()
+    with col_b:
+        if st.button("🟢 Log Win"):
+            st.session_state.cumulative_loss = 0.0
+            st.rerun()
