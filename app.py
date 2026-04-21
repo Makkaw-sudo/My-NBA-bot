@@ -5,129 +5,96 @@ import requests
 # --- 1. CONFIG ---
 API_KEY = '4d1e72e9dc2207f0ae744c61dfa51576' 
 
-# --- 2. ADVANCED STYLING (The "Beauty" Layer) ---
-st.set_page_config(page_title="NBA Terminal", layout="wide", initial_sidebar_state="collapsed")
+# --- 2. ELITE STYLING ---
+st.set_page_config(page_title="NBA Elite Terminal", layout="wide")
 
 st.markdown("""
     <style>
-    /* Main Background */
-    .stApp {
-        background-color: #0e1117;
-    }
-    
-    /* Fancy Button Styling */
+    .reportview-container { background: #0b0e14; }
+    .stMetric { background: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; }
     div.stButton > button:first-child {
-        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        color: white;
-        border: none;
-        padding: 15px;
-        border-radius: 12px;
-        font-weight: 600;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        transition: all 0.2s ease;
+        background: linear-gradient(90deg, #1f6feb 0%, #58a6ff 100%);
+        border: none; border-radius: 8px; color: white; font-weight: bold; height: 3.5rem;
     }
-    
-    div.stButton > button:first-child:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-    }
-
-    /* Card-like containers for data */
-    .metric-card {
-        background: #1a1f2c;
-        padding: 20px;
-        border-radius: 15px;
-        border-left: 5px solid #3b82f6;
-        margin-bottom: 20px;
-    }
-    
-    /* Clean up headers */
-    h1, h2, h3 {
-        color: #f8fafc;
-        font-family: 'Inter', sans-serif;
-    }
+    .status-box { padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #30363d; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. DATA LOGIC ---
-def fetch_nba_data(market_key):
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets={market_key}&oddsFormat=decimal"
+# --- 3. ADVANCED DATA LOGIC ---
+def fetch_elite_data(market_key):
+    # This version pulls from multiple regions to find the best odds
+    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us,eu&markets={market_key}&oddsFormat=decimal"
     try:
         response = requests.get(url)
         data = response.json()
         processed = []
         for game in data:
-            bookie = game['bookmakers'][0] if game['bookmakers'] else None
-            if bookie:
+            for bookie in game['bookmakers'][:3]: # Check top 3 bookmakers
                 m = bookie['markets'][0]
                 processed.append({
-                    "MATCHUP": f"{game['home_team']} ⚡ {game['away_team']}",
-                    "TARGET LINE": f"OVER {m['outcomes'][0]['point']}",
-                    "LIVE ODDS": m['outcomes'][0]['price']
+                    "MATCHUP": f"{game['home_team']} vs {game['away_team']}",
+                    "BOOKIE": bookie['title'].upper(),
+                    "LINE": f"O {m['outcomes'][0]['point']}",
+                    "PRICE": m['outcomes'][0]['price']
                 })
         return pd.DataFrame(processed)
     except:
         return pd.DataFrame()
 
-# --- 4. APP LAYOUT ---
-st.title("🏙️ NBA Terminal: Night Mode")
+# --- 4. THE TERMINAL INTERFACE ---
+st.title("🛡️ NBA Elite Recovery Terminal")
 
-# Command Center
-with st.container():
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: 
-        if st.button("🏟️ Game"): st.session_state.live_df = fetch_nba_data("totals")
-    with c2: 
-        if st.button("1️⃣ Q1"): st.session_state.live_df = fetch_nba_data("totals_q1")
-    with c3: 
-        if st.button("2️⃣ Q2"): st.session_state.live_df = fetch_nba_data("totals_q2")
-    with c4: 
-        if st.button("🔥 Live"): st.session_state.live_df = fetch_nba_data("totals_q3,totals_q4")
-    st.markdown('</div>', unsafe_allow_html=True)
+# Persistent Session Data
+if 'pnl' not in st.session_state: st.session_state.pnl = 0.0
+if 'history' not in st.session_state: st.session_state.history = []
 
-# Content
-left, right = st.columns([2, 1], gap="large")
+# Top Row: Command & Metrics
+m1, m2, m3 = st.columns([1, 1, 2])
+with m1:
+    st.metric("Session P/L", f"${st.session_state.pnl}", delta=f"{st.session_state.pnl} Today")
+with m2:
+    risk_level = "LOW" if st.session_state.pnl >= 0 else "CAUTION"
+    st.metric("Risk Status", risk_level)
+with m3:
+    c1, c2, c3 = st.columns(3)
+    if c1.button("🏟️ GAME"): st.session_state.df = fetch_elite_data("totals")
+    if c2.button("1️⃣ Q1"): st.session_state.df = fetch_elite_data("totals_q1")
+    if c3.button("🔄 RESET"): st.session_state.pnl = 0.0; st.rerun()
+
+st.divider()
+
+# Main Workspace
+left, right = st.columns([2, 1])
 
 with left:
-    st.subheader("📡 Live Market Feed")
-    df = st.session_state.get('live_df', pd.DataFrame())
+    st.subheader("📊 Market Arbitrage (Top 3 Bookies)")
+    df = st.session_state.get('df', pd.DataFrame())
     if not df.empty:
-        # Styled Table
-        st.dataframe(df.style.set_properties(**{
-            'background-color': '#161b22',
-            'color': '#c9d1d9',
-            'border-color': '#30363d'
-        }), use_container_width=True, hide_index=True)
+        # Highlight the best (highest) odds in green
+        st.dataframe(df.style.highlight_max(subset=['PRICE'], color='#238636'), 
+                     use_container_width=True, hide_index=True)
     else:
-        st.info("Select a market above to begin analysis.")
+        st.info("Select a command above to scan live markets.")
 
 with right:
-    st.subheader("📈 Bankroll Control")
+    st.subheader("⚡ Martingale Engine")
     
-    if 'profit' not in st.session_state: st.session_state.profit = 0.0
-    
-    st.markdown(f"""
-        <div style="background: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155;">
-            <p style="margin:0; font-size: 0.9em; color: #94a3b8;">Session Profit</p>
-            <h2 style="margin:0; color: #22c55e;">+${st.session_state.profit}</h2>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.write("") # Spacer
-    
-    with st.expander("🧮 Smart Recovery", expanded=True):
-        unit = st.number_input("Base Stake ($)", value=10.0)
-        loss = st.number_input("Loss to Recover ($)", value=0.0)
-        odds = st.number_input("Live Odds", value=1.91)
+    with st.form("calc_form"):
+        unit = st.number_input("Target Profit ($)", value=10.0)
+        total_lost = st.number_input("Cumulative Loss ($)", value=0.0)
+        current_odds = st.number_input("Best Available Odds", value=1.91)
         
-        recovery = round((loss + unit) / (odds - 1), 2)
+        # Calculation logic
+        stake = round((total_lost + unit) / (current_odds - 1), 2)
         
-        st.markdown(f"### Next Move: :green[${recovery}]")
+        # Risk color logic
+        color = "green" if total_lost == 0 else "orange" if total_lost < (unit * 5) else "red"
+        st.markdown(f"### Required Stake: :{color}[${stake}]")
         
-        if st.button("💰 LOG WIN"):
-            st.session_state.profit += unit
+        submitted = st.form_submit_button("💰 LOG PROFIT")
+        if submitted:
+            st.session_state.pnl += unit
             st.balloons()
             st.rerun()
 
-st.caption("v2.5 Professional Terminal | Data via The Odds API")
+st.caption("Elite Terminal v3.0 | Real-time Arbitrage Enabled")
