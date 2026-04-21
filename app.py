@@ -50,10 +50,10 @@ with tab1:
         df = st.session_state.get('daily_df', pd.DataFrame())
 
     if not df.empty:
-        # This line uses .map (NOT applymap)
+        # We use .map here to avoid the AttributeError
         st.table(df.style.map(highlight_safe, subset=['Over Prob']))
     else:
-        st.info("Click 'Sync' to load real data.")
+        st.info("Click 'Sync' to load data.")
 
 with tab2:
     st.header("Martingale Calculator")
