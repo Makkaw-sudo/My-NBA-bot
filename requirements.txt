@@ -1,7 +1,6 @@
 streamlit
 pandas
 numpy
-requests
-streamlit-option-menu
 scipy
 plotly
+streamlit-option-menu
