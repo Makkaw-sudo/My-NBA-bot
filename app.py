@@ -3,7 +3,7 @@ import streamlit as st
 
 # 1. Setup your API Key (Get a free one at the-odds-api.com)
 # For testing, you can paste the key here, but use st.secrets later for safety.
-API_KEY = '4d1e72e9dc2207f0ae744c61dfa51576'
+API_KEY = 4d1e72e9dc2207f0ae744c61dfa51576
 
 # 2. Create the function to fetch live data
 def fetch_live_nba_data():
