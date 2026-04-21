@@ -1,62 +1,50 @@
 import streamlit as st
-import numpy as np
-from scipy.stats import poisson
 
-# --- 1. PROBABILITY MATH ENGINE ---
-def calculate_poisson_probability(projected_total, bookie_line):
-    """
-    Uses Poisson Distribution to find the probability of a total 
-    going OVER the bookie's line.
-    """
-    # Probability of being AT or BELOW the line
-    prob_under = poisson.cdf(bookie_line, projected_total)
-    prob_over = 1 - prob_under
-    return round(prob_over * 100, 2)
+# --- ANALYSIS ENGINE ---
+def get_bet_instruction(home_team, away_team, quarter, live_line, step, base_unit, odds=1.91):
+    # 1. Calculate Martingale Stake
+    # Stake = (Previous Losses + Target) / (Odds - 1)
+    # For a simple doubling sequence:
+    total_lost = sum([base_unit * (2**i) for i in range(step - 1)])
+    stake = round((total_lost + base_unit) / (odds - 1), 2)
 
-# --- 2. MARTINGALE RISK AUDITOR ---
-def calculate_martingale_exposure(stake, steps, odds):
-    """Calculates total capital at risk if a streak continues."""
-    total_risk = 0
-    current_stake = stake
-    for _ in range(steps):
-        total_risk += current_stake
-        current_stake = (total_risk + stake) / (odds - 1)
-    return round(total_risk, 2)
+    # 2. Mock Analysis (In the real app, this pulls from your Team Data)
+    # Let's assume the projected total for these teams is 55.0
+    projected_avg = 55.0 
+    
+    # 3. Determine Direction
+    if live_line < projected_avg:
+        direction = "OVER"
+    else:
+        direction = "UNDER"
 
-# --- 3. THE ADVANCED UI ---
-st.title("🎲 Martingale Probability Matrix")
+    # 4. THE COMMAND LINE
+    instruction = f"Hey, bet **${stake}** on **{quarter} Quarter {direction} {live_line} points**."
+    return instruction
 
+# --- UI DISPLAY ---
+st.title("🎯 NBA Betting Commander")
+
+# User Inputs
 col1, col2 = st.columns(2)
-
 with col1:
-    st.subheader("📡 Live Analytics")
-    current_q_avg = st.number_input("Historical Q-Avg (Points)", value=55.0)
-    live_q_line = st.number_input("Current Live Line", value=58.5)
-    
-    # Calculate Probability
-    win_prob = calculate_poisson_probability(current_q_avg, live_q_line)
-    
-    st.metric("Win Probability (Under)", f"{100 - win_prob}%", 
-              delta=f"{round((100-win_prob)-50, 1)}% Edge vs Coin Flip")
+    h_team = st.text_input("Home Team", "Lakers")
+    q_target = st.selectbox("Target Quarter", ["1st", "2nd", "3rd", "4th"])
+    m_step = st.number_input("Martingale Step", min_value=1, value=1)
 
 with col2:
-    st.subheader("💰 Martingale Recovery")
-    starting_bet = st.number_input("Base Unit ($)", value=10.0)
-    max_steps = st.slider("Max Survival Steps", 1, 8, 4)
-    odds_decimal = st.number_input("Live Odds (Decimal)", value=1.91)
-    
-    exposure = calculate_martingale_exposure(starting_bet, max_steps, odds_decimal)
-    
-    st.warning(f"Total Capital Risked for {max_steps} steps: **${exposure}**")
+    a_team = st.text_input("Away Team", "Celtics")
+    b_line = st.number_input("Bookie Line", value=52.5)
+    unit = st.number_input("Base Unit ($)", value=10.0)
 
-# --- 4. THE LOGICAL DECISION MATRIX ---
 st.divider()
-st.subheader("🧠 Decision Intelligence")
 
-# This is the "Advanced" part: Combining Win Prob with Martingale
-if (100 - win_prob) > 55.0:
-    st.success("🔥 STRATEGIC ENTRY: Win probability is high. Start Martingale Sequence.")
-elif (100 - win_prob) < 45.0:
-    st.error("🚫 HIGH RISK: Probability is against you. Skip this quarter.")
-else:
-    st.info("⚖️ COIN FLIP: Probability is ~50%. Wait for a better Lead.")
+# Trigger the Command
+command = get_bet_instruction(h_team, a_team, q_target, b_line, m_step, unit)
+
+# High-Visibility Output
+st.markdown(f"""
+<div style="background-color:#1e2329; padding:20px; border-radius:15px; border: 2px solid #58a6ff; text-align:center;">
+    <h2 style="color:white; margin:0;">{command}</h2>
+</div>
+""", unsafe_allow_html=True)
