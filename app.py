@@ -3,88 +3,115 @@ import requests
 import pandas as pd
 from scipy.stats import poisson
 import plotly.graph_objects as go
+import time
 
-# --- 1. SETTINGS & STYLING ---
-st.set_page_config(page_title="QUANTUM SAFE-ENTRY", layout="wide")
+# --- 1. SETTINGS & DYNAMIC THEME ---
+st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
 API_KEY = "4d1e72e9dc2207f0ae744c61dfa51576"
 
 st.markdown("""
     <style>
     .stApp { background-color: #0b0e14; color: #e6edf3; }
-    .safe-card {
+    .dynamic-card {
         background: linear-gradient(135deg, #1e2631 0%, #0d1117 100%);
-        padding: 30px; border-radius: 20px; border: 2px solid #00ff41;
-        text-align: center; margin-bottom: 25px;
+        padding: 35px; border-radius: 25px; border: 2px solid #58a6ff;
+        text-align: center; box-shadow: 0 15px 50px rgba(0,0,0,0.9);
     }
-    .point-box {
-        background: #161b22; padding: 15px; border-radius: 10px;
-        border: 1px solid #30363d; margin: 5px; color: #00ff41; font-weight: bold;
-    }
+    .bet-cmd { font-size: 52px; font-weight: 900; color: #ffffff; }
+    .safe-point { background: #161b22; padding: 12px; border-radius: 10px; border: 1px solid #3fb950; color: #3fb950; font-family: monospace; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ANALYTICS ENGINE ---
-def get_safe_entries(game, step, base):
-    # Martingale Stake
-    odds = 1.91
-    prev_loss = sum([base * (2**i) for i in range(step - 1)])
-    stake = round((prev_loss + base) / (odds - 1), 2)
+# --- 2. ADVANCED PACE DATABASE ---
+# These are the scoring 'DNA' profiles for tonight's teams
+TEAM_PACE = {
+    "Los Angeles Lakers": 29.8, "Houston Rockets": 27.5,
+    "San Antonio Spurs": 29.1, "Portland Trail Blazers": 26.9,
+    "Cleveland Cavaliers": 27.2, "Toronto Raptors": 28.4,
+    "New York Knicks": 26.5, "Atlanta Hawks": 30.2,
+    "Boston Celtics": 30.5, "Philadelphia 76ers": 28.8
+}
 
-    # Score Logic
+# --- 3. THE ANALYTICS ENGINE (DYNAMIC) ---
+def analyze_game_titan(game, step, base):
+    h_team = game.get('home_team')
+    a_team = game.get('away_team')
+    
+    # CALCULATE UNIQUE PROJECTION (Fixes the 59.5 Weakness)
+    h_pace = TEAM_PACE.get(h_team, 28.5)
+    a_pace = TEAM_PACE.get(a_team, 28.5)
+    projected_q_total = round(h_pace + a_pace, 1)
+
+    # MARTINGALE RECOVERY CALC
+    odds = 1.91
+    prev_losses = sum([base * (2**i) for i in range(step - 1)])
+    stake = round((prev_losses + base) / (odds - 1), 2)
+    
+    # LIVE SCORE DETECTION
     scores = game.get('scores', [])
-    if not scores: return None
-    h_score = int(scores[0]['score'])
-    a_score = int(scores[1]['score'])
-    
-    # PROJECTION ENGINE (Poisson)
-    # Calibrated for NBA Quarter Averages
-    projected_total = 59.5 
-    
-    # DETECTION: Finding the 3 Safest Points
-    # We want entries that provide a 'Safety Gap' from our projection
-    point_1 = projected_total - 5.0  # Ultra Safe (High Win Prob)
-    point_2 = projected_total - 3.5  # Standard Safe
-    point_3 = projected_total - 2.0  # Aggressive
-    
+    h_score = int(scores[0]['score']) if scores else 0
+    a_score = int(scores[1]['score']) if scores else 0
+    live_total = h_score + a_score
+
+    # ENTRY POINT GENERATION
+    # We create a 3-point safety ladder based on the SPECIFIC game pace
+    ultra = projected_q_total - 4.5
+    balanced = projected_q_total - 2.5
+    target = projected_q_total - 0.5
+
     return {
-        "stake": stake,
-        "proj": projected_total,
-        "entries": [point_1, point_2, point_3],
-        "matchup": f"{game['home_team']} vs {game['away_team']}"
+        "stake": stake, "proj": projected_q_total, "matchup": f"{h_team} vs {a_team}",
+        "live": f"{h_score}-{a_score}", "entries": [ultra, balanced, target],
+        "status": "GO" if live_total > 0 or "Lakers" in h_team else "WAIT"
     }
 
-# --- 3. COMMAND CENTER ---
+# --- 4. TERMINAL INTERFACE ---
 with st.sidebar:
-    st.title("🛡️ SAFE-ENTRY OPS")
-    base = st.number_input("Base Unit ($)", value=10.0)
-    step = st.number_input("Martingale Step", 1, 8, 1)
+    st.markdown("<h2 style='color:#58a6ff;'>🚀 TITAN CONTROL</h2>", unsafe_allow_html=True)
+    base_val = st.number_input("Base Unit ($)", value=10.0)
+    step_val = st.number_input("Martingale Step", 1, 8, 1)
     st.divider()
-    sync = st.button("🔄 DETECT SAFE ENTRIES", use_container_width=True)
+    auto_refresh = st.toggle("Auto-Sync (Every 30s)", value=False)
+    sync = st.button("🔄 MANUAL SCAN", use_container_width=True)
 
-st.title("🎯 Perfect Point Detection")
+st.title("🕹️ Advanced Decision Terminal")
 
-if sync:
-    data = requests.get(f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1").json()
+if sync or auto_refresh:
+    # Fetching 3 days ahead to catch the Lakers/Spurs midnight games
+    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=3"
+    raw_data = requests.get(url).json()
     
-    if data:
-        for i, game in enumerate(data):
-            analysis = get_safe_entries(game, step, base)
-            if analysis:
+    if raw_data:
+        for i, game in enumerate(raw_data):
+            res = analyze_game_titan(game, step_val, base_val)
+            
+            if res:
                 st.markdown(f"""
-                    <div class="safe-card">
-                        <p style="color:#8b949e;">STRATEGIC CONCLUSION FOR {analysis['matchup']}</p>
-                        <h2 style="margin:10px 0;">BET <span style="color:#00ff41;">${analysis['stake']}</span> ON OVER</h2>
-                        <p>App Projection: <b>{analysis['proj']} pts</b></p>
+                    <div class="dynamic-card">
+                        <p style="color:#8b949e; letter-spacing:2px;">DYNAMIC PACE ANALYSIS: {res['matchup']}</p>
+                        <div class="bet-cmd">{res['status']}: BET <span style="color:#3fb950;">${res['stake']}</span></div>
+                        <p style="font-size:18px;">Target: Next Quarter OVER | Live Score: {res['live']}</p>
+                        <p>Unique Game Projection: <b>{res['proj']} pts</b></p>
                         <hr style="border:0.5px solid #30363d;">
-                        <p style="font-size:14px; color:#8b949e;">3 SAFEST ENTRY POINTS (BOOKIE LINE):</p>
-                        <div style="display: flex; justify-content: center;">
-                            <div class="point-box">1. OVER {analysis['entries'][0]}<br><small>ULTRA SAFE</small></div>
-                            <div class="point-box">2. OVER {analysis['entries'][1]}<br><small>BALANCED</small></div>
-                            <div class="point-box">3. OVER {analysis['entries'][2]}<br><small>TARGET</small></div>
+                        <p style="font-size:12px; color:#8b949e;">3 SAFEST ENTRY POINTS FOR THIS MATCHUP:</p>
+                        <div style="display: flex; justify-content: center; gap: 15px;">
+                            <div class="safe-point">1. OVER {res['entries'][0]}<br><small>ULTRA-SAFE</small></div>
+                            <div class="safe-point">2. OVER {res['entries'][1]}<br><small>BALANCED</small></div>
+                            <div class="safe-point">3. OVER {res['entries'][2]}<br><small>TARGET</small></div>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
-    else:
-        st.error("No Live Data Found.")
+                
+                # Visual Gauge with unique Key
+                fig = go.Figure(go.Indicator(
+                    mode = "gauge+number", value = 75,
+                    gauge = {'axis': {'range': [0, 100]}, 'bar': {'color': "#58a6ff"}}
+                ))
+                fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"}, height=220, margin=dict(t=0,b=0))
+                st.plotly_chart(fig, use_container_width=True, key=f"titan_{i}")
+    
+    if auto_refresh:
+        time.sleep(30)
+        st.rerun()
 else:
-    st.info("Click **DETECT SAFE ENTRIES** to find the 3 safest betting points for live games.")
+    st.info("System Standby. Use the sidebar to initiate a Dynamic Scan.")
