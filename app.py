@@ -1,87 +1,93 @@
 import streamlit as st
 import pandas as pd
-import random
+import numpy as np
 
-# --- CONFIG & STYLING ---
-st.set_page_config(page_title="NBA Analytics & Martingale", layout="wide")
+# --- 1. PROBABILITY LOGIC ---
+def calculate_failure_risk(prob_win_per_q, quarters_left):
+    """Calculates the chance of losing all remaining quarters."""
+    prob_loss_per_q = 1 - (prob_win_per_q / 100)
+    return round((prob_loss_per_q ** quarters_left) * 100, 2)
 
-# --- MOCK DATA FOR DAILY GAMES ---
-# In a production app, you would fetch this from an API like Sportsradar or API-NBA
-def get_daily_games():
-    teams = ["Celtics", "Lakers", "Warriors", "Nuggets", "Bucks", "Suns", "Knicks", "76ers"]
-    games = []
-    for i in range(len(teams)//2):
-        home = teams[i]
-        away = teams[-(i+1)]
-        # Simulated probability logic based on average scoring
-        prob = round(random.uniform(51.0, 58.5), 1) 
-        line = 55.5  # Standard quarter over/under line
-        odds = 1.91  # Standard juice
-        games.append({"Match": f"{home} vs {away}", "Market": f"Over {line}", "Probability": f"{prob}%", "Odds": odds})
-    return games
+def martingale_recovery(initial_stake, total_loss, odds):
+    """Calculates stake needed to recover all losses plus original profit."""
+    return round((total_loss + initial_stake) / (odds - 1), 2)
 
-# --- CALCULATION LOGIC ---
-def calculate_next_move(initial_stake, current_loss, odds):
-    # Martingale formula: (Total Loss + Target Profit) / (Odds - 1)
-    target_profit = initial_stake
-    needed = (current_loss + target_profit) / (odds - 1)
-    return round(needed, 2)
+# --- 2. APP UI SETUP ---
+st.set_page_config(page_title="NBA Quarter Martingale Pro", layout="wide")
+st.title("🏀 NBA Game & Martingale Analyzer")
 
-# --- APP TABS ---
-tab1, tab2 = st.tabs(["📊 Daily Game Analysis", "📈 Martingale Calculator"])
+# Sidebar for Global Settings
+with st.sidebar:
+    st.header("Strategy Settings")
+    base_unit = st.number_input("Base Unit Stake", min_value=1.0, value=10.0)
+    target_over = 55.5
+    st.info(f"Targeting Over {target_over} points per quarter.")
 
-# --- TAB 1: MAIN PAGE (DAILY GAMES) ---
-with tab1:
-    st.header("Daily NBA 'Safe Over' Predictions")
-    st.write("Analysis of games with a high statistical probability of hitting **Over 55.5** in at least one quarter.")
+# --- 3. MAIN PAGE: DAILY GAMES ---
+st.header("📅 Daily Game Analysis")
+# Simulated data - in production, fetch from NBA-API or Sportradar
+daily_games = [
+    {"Game": "Celtics @ 76ers", "Over Prob": 58.2, "Odds": 1.88, "Status": "Upcoming"},
+    {"Game": "Suns @ OKC", "Over Prob": 55.5, "Odds": 1.91, "Status": "Upcoming"},
+    {"Game": "Lakers @ Rockets", "Over Prob": 52.1, "Odds": 1.95, "Status": "Starting Soon"},
+]
+
+df = pd.DataFrame(daily_games)
+# Highlighting 'Safe' games (above 55%)
+def highlight_safe(val):
+    color = 'lightgreen' if isinstance(val, float) and val >= 55.0 else 'white'
+    return f'background-color: {color}'
+
+st.table(df.style.applymap(highlight_safe, subset=['Over Prob']))
+
+# --- 4. LIVE BREAKDOWN: QUARTER BY QUARTER ---
+st.divider()
+st.header("📉 Quarter-by-Quarter Risk Analysis")
+
+# Select a game to analyze
+selected_game = st.selectbox("Select game to analyze live:", df['Game'])
+game_prob = df[df['Game'] == selected_game]['Over Prob'].values[0]
+
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    current_q = st.radio("Current Quarter Step:", [1, 2, 3, 4], horizontal=True)
+    live_odds = st.number_input("Live Odds for this Quarter:", value=1.91)
     
-    daily_data = get_daily_games()
-    df = pd.DataFrame(daily_data)
+    # Session state to track cumulative loss
+    if 'cumulative_loss' not in st.session_state or current_q == 1:
+        st.session_state.cumulative_loss = 0.0
+
+with col2:
+    q_left = 5 - current_q
+    bust_risk = calculate_failure_risk(game_prob, q_left)
     
-    # Visualizing the table
-    st.table(df)
+    st.subheader(f"Analysis for Q{current_q}")
     
-    st.info("💡 **Strategy Tip:** Look for games with >55% probability to start your Martingale sequence.")
+    if current_q == 1:
+        move = base_unit
+        st.info(f"👉 **Next Move:** Stake **{move}**")
+    else:
+        # Assuming previous quarter was a loss to suggest the next logical move
+        move = martingale_recovery(base_unit, st.session_state.cumulative_loss, live_odds)
+        st.warning(f"👉 **Next Logical Move:** Stake **{move}** to recover previous losses.")
 
-# --- TAB 2: QUARTER-BY-QUARTER ANALYZER ---
-with tab2:
-    st.header("Martingale Progression Analyzer")
-    st.write("Use this to calculate your move if the previous quarter lost.")
-
-    col1, col2 = st.columns(2)
+    st.metric("Probability of 'Busting' (Losing all remaining Qs)", f"{bust_risk}%")
     
-    with col1:
-        base_bet = st.number_input("Starting Stake (Unit)", min_value=1.0, value=10.0)
-        q_step = st.radio("Select Current Step:", [1, 2, 3, 4], 
-                          help="Which quarter of the game are you analyzing?")
-        current_odds = st.number_input("Current Live Odds", min_value=1.01, value=1.91)
+    # Progress Bar for Risk
+    st.progress(1 - (bust_risk / 100))
+    st.caption("Lower bar means higher risk of losing the entire sequence.")
 
-    # Track losses through session state to suggest the next move
-    if 'total_lost' not in st.session_state:
-        st.session_state.total_lost = 0.0
+# --- 5. LOGIC FOR USER TO LOG LOSSES ---
+st.divider()
+if st.button("🔴 Log Loss for Current Quarter"):
+    # Mocking the math: if user lost, they need to know what they've lost so far
+    if current_q == 1:
+        st.session_state.cumulative_loss = base_unit
+    else:
+        st.session_state.cumulative_loss += move
+    st.error(f"Total Loss so far: {st.session_state.cumulative_loss}. Advance to Q{current_q + 1} for recovery move.")
 
-    with col2:
-        st.subheader("Action Suggestion")
-        
-        if q_step == 1:
-            st.session_state.total_lost = 0.0
-            st.success(f"**Move 1:** Stake **{base_bet}**")
-            st.caption("Starting fresh for Q1.")
-        else:
-            # Simple calculation based on previous steps
-            # For Q2, we assume Q1 lost. For Q3, we assume Q1+Q2 lost.
-            prev_losses = base_bet * (2.1 ** (q_step - 2)) # Estimated progression
-            suggestion = calculate_next_move(base_bet, prev_losses, current_odds)
-            
-            st.warning(f"**Move {q_step}:** Stake **{suggestion}**")
-            st.write(f"Total capital at risk if this loses: {round(prev_losses + suggestion, 2)}")
-
-    st.divider()
-    st.subheader("Probability of a 'Total Loss' (0/4 Quarters)")
-    # If prob of winning one Q is 55%, prob of losing all 4 is (0.45)^4
-    fail_rate = (0.45 ** 4) * 100
-    st.write(f"Based on a 55% win rate per quarter, the chance of losing all 4 quarters is approximately **{fail_rate:.2f}%**.")
-
-# --- FOOTER ---
-st.markdown("---")
-st.caption("⚠️ This app is for analytical purposes only. Martingale carries high risk of bankroll depletion.")
+if st.button("🟢 Log Win / Reset"):
+    st.session_state.cumulative_loss = 0.0
+    st.success("Strategy Successful. Reset to Q1.")
