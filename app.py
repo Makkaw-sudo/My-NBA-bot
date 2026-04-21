@@ -1,122 +1,62 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-import requests
-from datetime import datetime, timezone, timedelta
-from streamlit_option_menu import option_menu
+from scipy.stats import poisson
 
-# --- 1. CONFIG & STYLING ---
-API_KEY = '4d1e72e9dc2207f0ae744c61dfa51576'
-st.set_page_config(page_title="NBA Quant Engine", layout="wide", initial_sidebar_state="expanded")
+# --- 1. PROBABILITY MATH ENGINE ---
+def calculate_poisson_probability(projected_total, bookie_line):
+    """
+    Uses Poisson Distribution to find the probability of a total 
+    going OVER the bookie's line.
+    """
+    # Probability of being AT or BELOW the line
+    prob_under = poisson.cdf(bookie_line, projected_total)
+    prob_over = 1 - prob_under
+    return round(prob_over * 100, 2)
 
-# Custom CSS for a "Bloomberg Terminal" aesthetic
-st.markdown("""
-    <style>
-    .main { background-color: #0d1117; }
-    .stMetric { background-color: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 10px; }
-    div[data-testid="stExpander"] { border: none; background-color: #161b22; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 2. MARTINGALE RISK AUDITOR ---
+def calculate_martingale_exposure(stake, steps, odds):
+    """Calculates total capital at risk if a streak continues."""
+    total_risk = 0
+    current_stake = stake
+    for _ in range(steps):
+        total_risk += current_stake
+        current_stake = (total_risk + stake) / (odds - 1)
+    return round(total_risk, 2)
 
-# --- 2. RISK MANAGEMENT LOGIC (The "Brain") ---
-def calculate_risk_metrics(bankroll, target, current_loss, odds):
-    if odds <= 1: return 0, 0
-    next_stake = (current_loss + target) / (odds - 1)
+# --- 3. THE ADVANCED UI ---
+st.title("🎲 Martingale Probability Matrix")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("📡 Live Analytics")
+    current_q_avg = st.number_input("Historical Q-Avg (Points)", value=55.0)
+    live_q_line = st.number_input("Current Live Line", value=58.5)
     
-    # Calculation: How many steps left before bankroll is depleted?
-    steps_left = 0
-    temp_bankroll = bankroll - current_loss
-    running_loss = current_loss
+    # Calculate Probability
+    win_prob = calculate_poisson_probability(current_q_avg, live_q_line)
     
-    while temp_bankroll > next_stake:
-        steps_left += 1
-        running_loss += next_stake
-        next_stake = (running_loss + target) / (odds - 1)
-        temp_bankroll -= next_stake
-        if steps_left > 10: break # Safety break
-        
-    return round(next_stake, 2), steps_left
+    st.metric("Win Probability (Under)", f"{100 - win_prob}%", 
+              delta=f"{round((100-win_prob)-50, 1)}% Edge vs Coin Flip")
 
-# --- 3. SIDEBAR NAVIGATION ---
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2111/2111532.png", width=50)
-    st.title("QUANT OPS")
+with col2:
+    st.subheader("💰 Martingale Recovery")
+    starting_bet = st.number_input("Base Unit ($)", value=10.0)
+    max_steps = st.slider("Max Survival Steps", 1, 8, 4)
+    odds_decimal = st.number_input("Live Odds (Decimal)", value=1.91)
     
-    selected = option_menu(
-        menu_title=None,
-        options=["Command", "Analytics", "Risk Engine", "Settings"],
-        icons=["terminal", "graph-up", "shield-lock", "gear"],
-        menu_icon="cast",
-        default_index=0,
-        styles={
-            "container": {"padding": "0!important", "background-color": "#0d1117"},
-            "icon": {"color": "#58a6ff", "font-size": "20px"}, 
-            "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "color": "#c9d1d9"},
-            "nav-link-selected": {"background-color": "#21262d"},
-        }
-    )
-
-    st.divider()
-    bankroll = st.number_input("💵 Total Bankroll ($)", value=1000.0)
-    target_unit = st.number_input("🎯 Target Profit ($)", value=20.0)
-
-# --- 4. DATA ENGINE ---
-@st.cache_data(ttl=600)
-def fetch_nba_data():
-    # In a real app, you would also fetch team stats from an API like RapidAPI or NBA_API
-    # For now, we enhance the Odds API data
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
-    try:
-        r = requests.get(url)
-        return r.json()
-    except:
-        return []
-
-# --- 5. PAGE ROUTING ---
-
-if selected == "Command":
-    st.header("🎮 Strategic Command Center")
-    data = fetch_nba_data()
+    exposure = calculate_martingale_exposure(starting_bet, max_steps, odds_decimal)
     
-    col1, col2, col3 = st.columns(3)
-    
-    if data:
-        for i, game in enumerate(data[:6]): # Show top 6 games as cards
-            home = game['home_team']
-            away = game['away_team']
-            with [col1, col2, col3][i%3]:
-                with st.container():
-                    st.markdown(f"### {home} 🆚 {away}")
-                    st.caption(f"Starts: {game['commence_time']}")
-                    # Logic-based recommendation placeholder
-                    st.info("💡 PREDICTION: High Pace Game - Lean OVER")
-                    st.button(f"Analyze {home}", key=f"btn_{i}")
+    st.warning(f"Total Capital Risked for {max_steps} steps: **${exposure}**")
 
-elif selected == "Risk Engine":
-    st.header("🛡️ Martingale Risk Auditor")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        loss_seq = st.number_input("Current Sequential Loss ($)", value=0.0)
-        curr_odds = st.slider("Market Odds", 1.5, 5.0, 1.91)
-    
-    stake, steps = calculate_risk_metrics(bankroll, target_unit, loss_seq, curr_odds)
-    
-    with c2:
-        st.metric("Required Stake", f"${stake}", delta=f"{round((stake/bankroll)*100, 1)}% of Bank")
-        st.metric("Survival Buffer", f"{steps} Steps", delta="Danger Zone" if steps < 3 else "Safe", delta_color="inverse")
+# --- 4. THE LOGICAL DECISION MATRIX ---
+st.divider()
+st.subheader("🧠 Decision Intelligence")
 
-    if steps < 2:
-        st.error("🚨 CRITICAL RISK: Bankroll cannot support another doubling. Lower your Target Profit.")
-
-elif selected == "Analytics":
-    st.header("📊 Team Statistical Deep-Dive")
-    st.markdown("---")
-    # Here you would integrate a dataframe of team PPG (Points Per Game)
-    mock_stats = pd.DataFrame({
-        'Team': ['Lakers', 'Celtics', 'Nuggets', 'Suns'],
-        'PPG': [118.5, 120.3, 114.9, 116.2],
-        'Pace': [101.2, 99.5, 96.8, 100.1],
-        'Over %': ['55%', '62%', '48%', '51%']
-    })
-    st.table(mock_stats)
+# This is the "Advanced" part: Combining Win Prob with Martingale
+if (100 - win_prob) > 55.0:
+    st.success("🔥 STRATEGIC ENTRY: Win probability is high. Start Martingale Sequence.")
+elif (100 - win_prob) < 45.0:
+    st.error("🚫 HIGH RISK: Probability is against you. Skip this quarter.")
+else:
+    st.info("⚖️ COIN FLIP: Probability is ~50%. Wait for a better Lead.")
