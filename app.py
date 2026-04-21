@@ -1,124 +1,122 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import requests
 from datetime import datetime, timezone, timedelta
+from streamlit_option_menu import option_menu
 
-# --- 1. CONFIG ---
-API_KEY = '4d1e72e9dc2207f0ae744c61dfa51576' 
+# --- 1. CONFIG & STYLING ---
+API_KEY = '4d1e72e9dc2207f0ae744c61dfa51576'
+st.set_page_config(page_title="NBA Quant Engine", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. ELITE STYLING ---
-st.set_page_config(page_title="NBA Command Center", layout="wide")
+# Custom CSS for a "Bloomberg Terminal" aesthetic
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0e14; }
-    [data-testid="stMetricValue"] { font-size: 24px; color: #58a6ff; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #161b22;
-        border-radius: 8px 8px 0px 0px;
-        padding: 10px 20px;
-        color: #8b949e;
-    }
-    .stTabs [aria-selected="true"] { background-color: #1f6feb !important; color: white !important; }
+    .main { background-color: #0d1117; }
+    .stMetric { background-color: #161b22; border: 1px solid #30363d; padding: 15px; border-radius: 10px; }
+    div[data-testid="stExpander"] { border: none; background-color: #161b22; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ADVANCED SCHEDULING LOGIC ---
-def fetch_full_schedule():
-    # Fetching odds which include the schedule for upcoming days
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals&oddsFormat=decimal"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        processed = []
-        now = datetime.now(timezone.utc)
-        
-        for game in data:
-            start_time = datetime.fromisoformat(game['commence_time'].replace('Z', '+00:00'))
-            time_diff = start_time - now
-            
-            # Formatting Countdown
-            if time_diff.total_seconds() > 0:
-                hours, remainder = divmod(int(time_diff.total_seconds()), 3600)
-                minutes, _ = divmod(remainder, 60)
-                countdown = f"{hours}h {minutes}m"
-            else:
-                countdown = "LIVE / FINISHED"
-
-            bookie = game['bookmakers'][0] if game['bookmakers'] else None
-            line = bookie['markets'][0]['outcomes'][0]['point'] if bookie else "N/A"
-            odds = bookie['markets'][0]['outcomes'][0]['price'] if bookie else "N/A"
-
-            processed.append({
-                "DATE": start_time.strftime('%b %d'),
-                "TIME (UTC)": start_time.strftime('%H:%M'),
-                "MATCHUP": f"{game['home_team']} vs {game['away_team']}",
-                "COUNTDOWN": countdown,
-                "EST. LINE": line,
-                "ODDS": odds,
-                "RAW_TIME": start_time # For filtering
-            })
-        return pd.DataFrame(processed)
-    except:
-        return pd.DataFrame()
-
-# --- 4. THE INTERFACE ---
-st.title("📅 NBA Strategic Command Center")
-
-# Session State for P/L
-if 'pnl' not in st.session_state: st.session_state.pnl = 0.0
-
-# Sidebar Calculator (Always visible for quick math)
-with st.sidebar:
-    st.header("🧮 Martingale Calc")
-    unit = st.number_input("Target Profit", value=10.0)
-    lost = st.number_input("Total Lost", value=0.0)
-    odds_input = st.number_input("Live Odds", value=1.91)
-    stake = round((lost + unit) / (odds_input - 1), 2)
-    st.markdown(f"## Stake: :green[${stake}]")
-    if st.button("💰 LOG WIN"):
-        st.session_state.pnl += unit
-        st.balloons()
-
-# Main Dashboard Metrics
-m1, m2, m3 = st.columns(3)
-m1.metric("Session P/L", f"${st.session_state.pnl}")
-m2.metric("Today's Date", datetime.now().strftime('%d %B'))
-if m3.button("🔄 REFRESH SCHEDULE"):
-    st.session_state.sched_df = fetch_full_schedule()
-
-st.divider()
-
-# TABBED INTERFACE FOR SCHEDULE
-df = st.session_state.get('sched_df', pd.DataFrame())
-
-if not df.empty:
-    tab_today, tab_tomorrow, tab_future = st.tabs(["🔥 Today", "🌅 Tomorrow", "📅 Upcoming"])
+# --- 2. RISK MANAGEMENT LOGIC (The "Brain") ---
+def calculate_risk_metrics(bankroll, target, current_loss, odds):
+    if odds <= 1: return 0, 0
+    next_stake = (current_loss + target) / (odds - 1)
     
-    today_date = datetime.now(timezone.utc).date()
-    tomorrow_date = today_date + timedelta(days=1)
+    # Calculation: How many steps left before bankroll is depleted?
+    steps_left = 0
+    temp_bankroll = bankroll - current_loss
+    running_loss = current_loss
+    
+    while temp_bankroll > next_stake:
+        steps_left += 1
+        running_loss += next_stake
+        next_stake = (running_loss + target) / (odds - 1)
+        temp_bankroll -= next_stake
+        if steps_left > 10: break # Safety break
+        
+    return round(next_stake, 2), steps_left
 
-    with tab_today:
-        today_df = df[df['RAW_TIME'].dt.date == today_date]
-        if not today_df.empty:
-            st.dataframe(today_df.drop(columns=['RAW_TIME']), use_container_width=True, hide_index=True)
-        else:
-            st.info("No more games scheduled for today.")
+# --- 3. SIDEBAR NAVIGATION ---
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/2111/2111532.png", width=50)
+    st.title("QUANT OPS")
+    
+    selected = option_menu(
+        menu_title=None,
+        options=["Command", "Analytics", "Risk Engine", "Settings"],
+        icons=["terminal", "graph-up", "shield-lock", "gear"],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "#0d1117"},
+            "icon": {"color": "#58a6ff", "font-size": "20px"}, 
+            "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "color": "#c9d1d9"},
+            "nav-link-selected": {"background-color": "#21262d"},
+        }
+    )
 
-    with tab_tomorrow:
-        tomorrow_df = df[df['RAW_TIME'].dt.date == tomorrow_date]
-        if not tomorrow_df.empty:
-            st.dataframe(tomorrow_df.drop(columns=['RAW_TIME']), use_container_width=True, hide_index=True)
-        else:
-            st.info("Schedule for tomorrow not yet released by bookmakers.")
+    st.divider()
+    bankroll = st.number_input("💵 Total Bankroll ($)", value=1000.0)
+    target_unit = st.number_input("🎯 Target Profit ($)", value=20.0)
 
-    with tab_future:
-        future_df = df[df['RAW_TIME'].dt.date > tomorrow_date]
-        if not future_df.empty:
-            st.dataframe(future_df.drop(columns=['RAW_TIME']), use_container_width=True, hide_index=True)
-        else:
-            st.info("Long-term schedule depends on market availability.")
-else:
-    st.warning("Tap 'Refresh Schedule' to load the NBA calendar.")
+# --- 4. DATA ENGINE ---
+@st.cache_data(ttl=600)
+def fetch_nba_data():
+    # In a real app, you would also fetch team stats from an API like RapidAPI or NBA_API
+    # For now, we enhance the Odds API data
+    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
+    try:
+        r = requests.get(url)
+        return r.json()
+    except:
+        return []
 
-st.caption("Terminal v4.0 | Advanced Planning Mode")
+# --- 5. PAGE ROUTING ---
+
+if selected == "Command":
+    st.header("🎮 Strategic Command Center")
+    data = fetch_nba_data()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    if data:
+        for i, game in enumerate(data[:6]): # Show top 6 games as cards
+            home = game['home_team']
+            away = game['away_team']
+            with [col1, col2, col3][i%3]:
+                with st.container():
+                    st.markdown(f"### {home} 🆚 {away}")
+                    st.caption(f"Starts: {game['commence_time']}")
+                    # Logic-based recommendation placeholder
+                    st.info("💡 PREDICTION: High Pace Game - Lean OVER")
+                    st.button(f"Analyze {home}", key=f"btn_{i}")
+
+elif selected == "Risk Engine":
+    st.header("🛡️ Martingale Risk Auditor")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        loss_seq = st.number_input("Current Sequential Loss ($)", value=0.0)
+        curr_odds = st.slider("Market Odds", 1.5, 5.0, 1.91)
+    
+    stake, steps = calculate_risk_metrics(bankroll, target_unit, loss_seq, curr_odds)
+    
+    with c2:
+        st.metric("Required Stake", f"${stake}", delta=f"{round((stake/bankroll)*100, 1)}% of Bank")
+        st.metric("Survival Buffer", f"{steps} Steps", delta="Danger Zone" if steps < 3 else "Safe", delta_color="inverse")
+
+    if steps < 2:
+        st.error("🚨 CRITICAL RISK: Bankroll cannot support another doubling. Lower your Target Profit.")
+
+elif selected == "Analytics":
+    st.header("📊 Team Statistical Deep-Dive")
+    st.markdown("---")
+    # Here you would integrate a dataframe of team PPG (Points Per Game)
+    mock_stats = pd.DataFrame({
+        'Team': ['Lakers', 'Celtics', 'Nuggets', 'Suns'],
+        'PPG': [118.5, 120.3, 114.9, 116.2],
+        'Pace': [101.2, 99.5, 96.8, 100.1],
+        'Over %': ['55%', '62%', '48%', '51%']
+    })
+    st.table(mock_stats)
