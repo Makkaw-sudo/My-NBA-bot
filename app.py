@@ -39,12 +39,16 @@ def get_all_daily_leads():
             if bookies:
                 for m in bookies[0].get('markets', []):
                     if m['key'] == 'totals':
-                        line = m['outcomes'][0]['point'] / 4 
+                        outcome = m['outcomes'][0] # Usually the 'Over'
+                        line = outcome['point'] / 4 
+                        odds = outcome['price'] # This is the multiplier (e.g. 1.91)
+                        
                         z = (line - avg) / STD_DEV
                         prob = 0.5 * (1 + math.erf(-z / math.sqrt(2)))
                         rows.append({
                             "Matchup": f"{home} vs {away}",
-                            "Line": line,
+                            "Line": round(line, 1),
+                            "Odds": odds,
                             "Prob": round(prob * 100, 1),
                             "Edge": round(avg - line, 2)
                         })
@@ -56,48 +60,48 @@ if 'step' not in st.session_state: st.session_state.step = 0
 if 'selected_game' not in st.session_state: st.session_state.selected_game = None
 
 # --- 4. UI ---
-st.set_page_config(page_title="Sovereign Command", layout="wide")
-st.title("🤖 Sovereign Command Center")
+st.set_page_config(page_title="Sovereign Command v4", layout="wide")
+st.title("🤖 Sovereign Command: Profit Optimizer")
 
 df = get_all_daily_leads()
 
-col_table, col_terminal = st.columns([1, 1])
+col_table, col_terminal = st.columns([1, 1.2])
 
 with col_table:
     st.subheader("📅 Daily Smart Table")
-    st.write("Select a game to load into the terminal:")
-    
-    # Selection logic using a dataframe with a button
     if not df.empty:
-        # We display the table and use a selectbox to 'pick' the game one by one
         game_list = df['Matchup'].tolist()
         choice = st.selectbox("Pick a Target Matchup:", game_list)
-        
         if choice:
             st.session_state.selected_game = df[df['Matchup'] == choice].iloc[0]
-            
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("No active lines found. Ensure API key is active.")
+        st.info("No active lines found.")
 
 with col_terminal:
     st.subheader("⚡ Execution Terminal")
-    
     if st.session_state.selected_game is not None:
         g = st.session_state.selected_game
         stake = BASE_BET * (2 ** st.session_state.step)
         
+        # PROFIT CALCULATION
+        potential_return = stake * g['Odds']
+        net_profit = potential_return - stake
+        
         st.markdown(f"""
-            <div style="background-color:#161b22; padding:30px; border-radius:15px; border:2px solid #3fb950;">
+            <div style="background-color:#0d1117; padding:30px; border-radius:15px; border:2px solid #58a6ff;">
                 <h2 style="margin:0; color:#8b949e;">ACTIVE TARGET</h2>
                 <h1 style="margin:10px 0;">{g['Matchup']}</h1>
-                <hr>
-                <div style="display:flex; justify-content:space-between;">
-                    <div><p>INSTRUCTION</p><h3>OVER {g['Line']}</h3></div>
-                    <div><p>PROBABILITY</p><h3>{g['Prob']}%</h3></div>
-                    <div><p>STAKE</p><h3 style="color:#3fb950;">${stake}</h3></div>
+                <hr style="border-color:#30363d">
+                <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                    <div><p style="color:#8b949e; margin:0;">TARGET</p><h3>OVER {g['Line']}</h3></div>
+                    <div><p style="color:#8b949e; margin:0;">ODDS</p><h3>{g['Odds']}</h3></div>
+                    <div><p style="color:#8b949e; margin:0;">STAKE</p><h3>${stake}</h3></div>
                 </div>
-                <p style="color:#8b949e; font-size: 0.8em; margin-top:20px;">RECOVERY STEP: {st.session_state.step + 1}</p>
+                <div style="background-color:#161b22; padding:15px; border-radius:10px; border-left: 5px solid #3fb950;">
+                    <p style="color:#8b949e; margin:0;">ESTIMATED NET PROFIT</p>
+                    <h2 style="color:#3fb950; margin:0;">+ ${net_profit:,.2f}</h2>
+                </div>
             </div>
         """, unsafe_allow_html=True)
         
@@ -111,6 +115,6 @@ with col_terminal:
             st.session_state.step += 1
             st.rerun()
     else:
-        st.write("Select a game from the table on the left to begin.")
+        st.write("Select a game from the table to calculate potential profit.")
 
-st.caption("Engine: Dynamic Matchup Mean + Martingale Recovery Protocol")
+st.caption(f"Strategy: Martingale Recovery | Base: ${BASE_BET} | Step: {st.session_state.step + 1}")
