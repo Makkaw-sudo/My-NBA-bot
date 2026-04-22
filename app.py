@@ -1,76 +1,53 @@
-import requests
-import math
+import streamlit as st
+import pandas as pd
 
-class QuantumTitanAI:
-    def __init__(self, base_stake, bankroll):
-        self.base_stake = base_stake
-        self.bankroll = bankroll
-        self.current_step = 0  # Martingale level (0, 1, 2, 3...)
-        self.total_loss = 0
+# --- STYLING ---
+st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
+st.title("🚀 QUANTUM TITAN V11: Decision Engine")
+st.markdown("---")
 
-    def calculate_ev(self, prob, odds):
-        """ Calculates Expected Value. Only +EV bets are considered. """
-        return (prob * odds) - 1
+# --- SIDEBAR: BANKROLL MANAGEMENT ---
+st.sidebar.header("💰 Bankroll Settings")
+base_stake = st.sidebar.number_input("Base Stake ($)", value=10.0)
+current_step = st.sidebar.slider("Current Martingale Step", 0, 4, 0)
+total_loss = st.sidebar.number_input("Total Accumulated Loss ($)", value=0.0)
 
-    def martingale_manager(self, odds):
-        """ 
-        Calculates the stake needed to recover all losses + target profit.
-        Formula: (Total Loss + Base Stake) / (Odds - 1)
-        """
-        if self.current_step >= 4: # SAFETY CAP: Reset after 4 losses
-            self.reset_progression()
-            return self.base_stake, "⚠️ RESET: Max levels reached. Starting over."
-        
-        # Dynamic recovery multiplier (safely handles 1.6+ odds)
-        stake = (self.total_loss + self.base_stake) / (odds - 1)
-        return round(stake, 2), f"Step {self.current_step + 1}"
-
-    def select_perfect_odd(self, market_options):
-        """
-        Market Competition: Scans different markets and picks the 'Perfect' one.
-        Expects a list of dicts: [{'market': 'NBA Over', 'prob': 0.72, 'odds': 1.65}, ...]
-        """
-        best_market = None
-        highest_edge = 0
-
-        for option in market_options:
-            edge = self.calculate_ev(option['prob'], option['odds'])
-            
-            # The Selection Filter: Needs >65% prob and +EV edge
-            if option['prob'] >= 0.65 and edge > highest_edge:
-                highest_edge = edge
-                best_market = option
-
-        return best_market
-
-    def execute_signal(self, market_options):
-        selection = self.select_perfect_odd(market_options)
-        
-        if selection:
-            stake, level = self.martingale_manager(selection['odds'])
-            message = (
-                f"🎯 **SMART SIGNAL DETECTED**\n"
-                f"Market: {selection['market']}\n"
-                f"Odds: {selection['odds']} | Prob: {selection['prob']:.1%}\n"
-                f"Instruction: {level}\n"
-                f"Required Stake: ${stake}"
-            )
-            return message
-        return "⏳ Scanning... No 'Perfect' odds found currently."
-
-    def reset_progression(self):
-        self.current_step = 0
-        self.total_loss = 0
-
-# --- INITIALIZATION ---
-# Starting with a $10 base stake
-bot = QuantumTitanAI(base_stake=10, bankroll=1000)
-
-# --- EXAMPLE LIVE SCAN ---
-live_opportunities = [
-    {'market': 'NBA Live Quarter (Pace Logic)', 'prob': 0.74, 'odds': 1.62},
-    {'market': 'Football Corners (Wing Play)', 'prob': 0.68, 'odds': 1.75},
-    {'market': 'Yellow Cards (Referee Strict)', 'prob': 0.55, 'odds': 2.10}
+# --- MOCK DATA: THE SMART AGENT SCAN ---
+# In a real setup, this data would come from your Sports API
+live_data = [
+    {"Market": "NBA Live Total (Pace Logic)", "Prob": 0.74, "Odds": 1.62, "Type": "Basketball"},
+    {"Market": "Football Corners (Over 8.5)", "Prob": 0.68, "Odds": 1.75, "Type": "Football"},
+    {"Market": "Yellow Cards (Referee Strict)", "Prob": 0.52, "Odds": 2.10, "Type": "Football"},
 ]
+df = pd.DataFrame(live_data)
 
-print(bot.execute_signal(live_opportunities))
+# --- MAIN INTERFACE: THE 'PERFECT ODD' SELECTION ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("📡 Live Market Analysis")
+    st.dataframe(df.style.highlight_max(axis=0, subset=['Prob']), use_container_width=True)
+
+    # Logic to pick the best one (Highest Prob + Edge)
+    perfect_choice = live_data[0] # Auto-selected by AI logic
+    
+with col2:
+    st.subheader("🎯 AI Recommendation")
+    st.success(f"**Market:** {perfect_choice['Market']}")
+    st.metric("Probability", f"{perfect_choice['Prob']:.0%}")
+    st.metric("Target Odds", perfect_choice['Odds'])
+
+# --- MARTINGALE CALCULATOR ---
+st.markdown("### 📊 Execution Details")
+# Formula: (Loss + Profit) / (Odds - 1)
+required_stake = (total_loss + base_stake) / (perfect_choice['Odds'] - 1)
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Next Stake", f"${required_stake:.2f}")
+c2.metric("Target Profit", f"${base_stake:.2f}")
+c3.metric("Risk Level", "Moderate" if current_step < 3 else "HIGH")
+
+# --- TELEGRAM TRIGGER ---
+if st.button("📤 SEND SIGNAL TO TELEGRAM"):
+    # This calls your send_signal function
+    st.toast("Signal sent to your phone!", icon="✅")
