@@ -1,102 +1,93 @@
 import streamlit as st
-import time
 import math
-from datetime import datetime, timedelta
 
-# --- 1. CORE MATH LOGIC (Poisson & Probability) ---
-def calculate_win_prob(expected_pts, live_line):
-    """
-    Uses a simplified Poisson logic to estimate the chance of an 'Over'.
-    """
-    # Poisson formula component: e^-lambda * (lambda^k / k!) is complex for 50+ points,
-    # so we use a Normal Distribution approximation for speed.
-    if expected_pts <= 0: return 0
+# --- 1. CONFIGURATION ---
+BANKROLL = 5000.00  # Total money you have for betting
+MAX_RISK_PCT = 0.05 # Never risk more than 5% of bankroll in one series
+BASE_UNIT = 100.00  # Your starting bet size
+
+# --- 2. SAFETY & PROFIT CALCULATOR ---
+def get_safe_instruction(step, odds, target_line):
+    # Calculate Martingale progression
+    current_stake = BASE_UNIT * (2 ** step)
     
-    # Standard deviation in NBA quarters is roughly 4.5 points
-    std_dev = 4.5
-    z_score = (live_line - expected_pts) / std_dev
+    # Calculate DANGER LEVEL
+    total_at_stake = sum([BASE_UNIT * (2**i) for i in range(step + 1)])
+    is_dangerous = total_at_stake > (BANKROLL * MAX_RISK_PCT)
     
-    # Simple probability estimation
-    prob = 0.5 * (1 + math.erf(-z_score / math.sqrt(2)))
-    return round(prob * 100, 1)
+    # Profit Math
+    potential_return = current_stake * odds
+    net_profit = potential_return - total_at_stake
+    
+    return {
+        "stake": current_stake,
+        "net_profit": net_profit,
+        "danger": is_dangerous,
+        "total_at_stake": total_at_stake
+    }
 
-# --- 2. SESSION STATE (The Memory of the App) ---
-if 'game_idx' not in st.session_state:
-    st.session_state.game_idx = 0
-if 'martingale_step' not in st.session_state:
-    st.session_state.martingale_step = 0
+# --- 3. SESSION STATE ---
+if 'step' not in st.session_state: st.session_state.step = 0
 
-# --- 3. MOCK DATA (Leads with Probability Math) ---
-# In your real app, 'expected_q_pts' would come from pre-game closing lines
-leads = [
-    {"teams": "Boston vs Philly", "time": datetime.now() + timedelta(minutes=2), "expected": 58.5, "line": 54.5},
-    {"teams": "Lakers vs Warriors", "time": datetime.now() + timedelta(minutes=15), "expected": 61.0, "line": 63.5}
-]
-
-# --- 4. STYLING ---
+# --- 4. STYLE ---
 st.markdown("""
     <style>
-    .main-card { background: #161b22; padding: 25px; border-radius: 15px; border: 1px solid #30363d; }
-    .stat-box { background: #0d1117; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #3fb950; }
-    .prob-high { color: #3fb950; font-weight: bold; }
-    .prob-low { color: #ff7b72; font-weight: bold; }
+    .safety-box { padding: 20px; border-radius: 12px; border: 2px solid; margin-bottom: 20px; text-align: center; }
+    .safe { border-color: #3fb950; background: rgba(63, 185, 80, 0.05); }
+    .danger { border-color: #ff7b72; background: rgba(255, 123, 114, 0.1); animation: blink 1s infinite; }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    .big-value { font-size: 32px; font-weight: bold; display: block; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. MAIN DISPLAY ---
-st.title("🏀 NBA Martingale Command Center")
+# --- 5. DASHBOARD ---
+st.title("🛡️ Risk-Adjusted Betting Command")
 
-current = leads[st.session_state.game_idx]
-prob = calculate_win_prob(current['expected'], current['line'])
-base_stake = 100
-current_stake = base_stake * (2 ** st.session_state.martingale_step)
+# Inputs (These would come from your live API/Scraper)
+current_game = "Lakers vs Warriors"
+current_target = 54.5
+current_odds = 2.3  # Example high odds
 
-# Countdown Calculation
-time_left = current['time'] - datetime.now()
-sec_left = int(time_left.total_seconds())
-timer_str = f"{max(0, sec_left // 60)}m {max(0, sec_left % 60)}s"
+# Get logic results
+data = get_safe_instruction(st.session_state.step, current_odds, current_target)
 
-# Render UI Card
+# Display Danger Warning if risk is too high
+status_class = "danger" if data['danger'] else "safe"
+status_text = "⚠️ HIGH RISK - REDUCE STAKE" if data['danger'] else "✅ SAFE MARGIN"
+
 st.markdown(f"""
-    <div class="main-card">
-        <h2 style="margin-bottom:0;">{current['teams']}</h2>
-        <p style="color: #8b949e;">Next Opportunity Countdown: <b style="color:white;">{timer_str}</b></p>
-        <hr style="border: 0.1px solid #30363d;">
-        <div style="display: flex; justify-content: space-between; gap: 10px;">
-            <div class="stat-box" style="flex: 1;">
-                <div style="font-size: 12px; color: #8b949e;">WIN PROBABILITY</div>
-                <div style="font-size: 22px;" class="{"prob-high" if prob > 55 else "prob-low"}">{prob}%</div>
-            </div>
-            <div class="stat-box" style="flex: 1; border-color: #ff7b72;">
-                <div style="font-size: 12px; color: #8b949e;">REQUIRED STAKE</div>
-                <div style="font-size: 22px; color: #ff7b72;">${current_stake}</div>
-            </div>
+    <div class="safety-box {status_class}">
+        <small style="color: #8b949e;">{status_text}</small>
+        <div style="margin: 10px 0;">
+            <span style="color: #8b949e;">BET OVER:</span>
+            <span class="big-value" style="color: white;">{current_target} @ {current_odds}</span>
         </div>
-        <div style="margin-top: 15px; text-align: center;">
-            <small style="color: #8b949e;">Step {st.session_state.martingale_step + 1} of Martingale Progression</small>
+        <div style="display: flex; justify-content: space-around;">
+            <div>
+                <small style="color: #8b949e;">SUGGESTED STAKE</small>
+                <div style="font-size: 24px; color: #ff7b72; font-weight: bold;">${data['stake']}</div>
+            </div>
+            <div>
+                <small style="color: #8b949e;">NET PROFIT</small>
+                <div style="font-size: 24px; color: #3fb950; font-weight: bold;">+${data['net_profit']:.2f}</div>
+            </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# --- 6. CONTROLS ---
-col1, col2, col3 = st.columns(3)
+# --- 6. EMOTIONLESS CONTROLS ---
+st.write(f"**Series Exposure:** ${data['total_at_stake']} / ${BANKROLL}")
 
+col1, col2 = st.columns(2)
 with col1:
-    if st.button("✅ WON (Reset)"):
-        st.session_state.martingale_step = 0
+    if st.button("✅ WIN (Restart)", use_container_width=True):
+        st.session_state.step = 0
         st.rerun()
-
 with col2:
-    if st.button("❌ LOST (Double)"):
-        st.session_state.martingale_step += 1
+    if st.button("❌ LOSS (Next Step)", use_container_width=True):
+        st.session_state.step += 1
         st.rerun()
 
-with col3:
-    if st.button("NEXT GAME ➡️"):
-        st.session_state.game_idx = (st.session_state.game_idx + 1) % len(leads)
-        st.rerun()
-
-# This small script auto-refreshes the page every 30 seconds to update the timer
-# without causing the "black screen" infinite loop.
-st.empty()
-time.sleep(0.1) # Brief pause for stability
+if st.button("Emergency Reset"):
+    st.session_state.step = 0
+    st.rerun()
