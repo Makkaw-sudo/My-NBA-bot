@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 
 # --- 1. CORE ENGINE ---
 class QuantumTitanEngine:
@@ -7,93 +6,91 @@ class QuantumTitanEngine:
         self.base_stake = base_stake
         self.stop_loss = stop_loss
         self.max_stake = max_stake
-        self.total_loss = 0
 
-    def calculate_results(self, odds):
-        """Calculates stake and next-step recovery logic."""
-        if self.total_loss >= self.stop_loss:
+    def get_bet_logic(self, current_loss, odds):
+        """Calculates stake and potential payout."""
+        if current_loss >= self.stop_loss:
             return None, "STOP-LOSS HIT"
         if odds <= 1.0: return 0.0, 0.0
         
-        stake = (self.total_loss + self.base_stake) / (odds - 1)
-        
+        stake = (current_loss + self.base_stake) / (odds - 1)
         if stake > self.max_stake:
             return None, "LIMIT EXCEEDED"
             
-        payout = stake * odds
-        return round(float(stake), 2), round(float(payout), 2)
+        return round(float(stake), 2), round(float(stake * odds), 2)
 
-# --- 2. UI SETUP ---
+# --- 2. SESSION STATE (The Brain of the App) ---
+if 'cycle_loss' not in st.session_state: st.session_state.cycle_loss = 0.0
+if 'active_bet' not in st.session_state: st.session_state.active_bet = None
+
+# --- 3. UI SETUP ---
 st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
-st.title("🚀 QUANTUM TITAN V11: Overs Strategy Only")
+st.title("🚀 QUANTUM TITAN V11: Live Execution Mode")
 
 # SIDEBAR: Risk Management
 st.sidebar.header("🛡️ Risk & Recovery")
 base_amt = st.sidebar.number_input("Base Stake ($)", value=10.0)
-acc_loss = st.sidebar.number_input("Current Cycle Loss ($)", value=0.0)
-max_loss = st.sidebar.number_input("Stop-Loss Limit ($)", value=200.0)
-bookie_cap = st.sidebar.number_input("Max Bet Limit ($)", value=150.0)
+max_l = st.sidebar.number_input("Stop-Loss ($)", value=200.0)
+cap_s = st.sidebar.number_input("Max Bet ($)", value=150.0)
 
-engine = QuantumTitanEngine(base_amt, max_loss, bookie_cap)
-engine.total_loss = acc_loss
+# Current Bankroll Status
+st.sidebar.markdown("---")
+st.sidebar.metric("Current Cycle Loss", f"${st.session_state.cycle_loss}")
+if st.sidebar.button("🔄 Reset Cycle Manually"):
+    st.session_state.cycle_loss = 0.0
+    st.session_state.active_bet = None
+    st.rerun()
 
-# --- 3. "OVERS ONLY" DATA FEEDS (April 22, 2026) ---
+engine = QuantumTitanEngine(base_amt, max_l, cap_s)
+
+# --- 4. GAME DATA (OVERS ONLY) ---
 nba_feed = [
-    {'match': 'Orlando @ Detroit', 'stage': 'Q1', 'market': 'Over 51.5 Pts', 'odds': 1.72},
-    {'match': 'Phoenix @ OKC', 'stage': 'Q1', 'market': 'Over 53.5 Pts', 'odds': 1.68},
-    {'match': 'Orlando @ Detroit', 'stage': 'Q2', 'market': 'Over 52.5 Pts', 'odds': 1.75}
+    {'id': 'nba1', 'match': 'Orlando @ Detroit', 'market': 'Q1 Over 51.5', 'odds': 1.72},
+    {'id': 'nba2', 'match': 'Phoenix @ OKC', 'market': 'Q1 Over 53.5', 'odds': 1.68}
+]
+foot_feed = [
+    {'id': 'foot1', 'match': 'AS FAR vs RS Berkane', 'market': 'Over 1.5 Goals', 'odds': 1.58},
+    {'id': 'foot2', 'match': 'Man City @ Burnley', 'market': 'Over 2.5 Goals', 'odds': 1.65}
 ]
 
-football_feed = [
-    {'match': 'Man City @ Burnley', 'league': 'Premier League', 'market': 'Total Goals Over 2.5', 'odds': 1.65},
-    {'match': 'Celta Vigo @ Barcelona', 'league': 'La Liga', 'market': 'Total Corners Over 9.5', 'odds': 1.70},
-    {'match': 'AS FAR vs RS Berkane', 'league': 'Botola Pro', 'market': 'Total Goals Over 1.5', 'odds': 1.58},
-    {'match': 'PSG vs Nantes', 'league': 'Ligue 1', 'market': 'PSG Team Goals Over 2.5', 'odds': 1.82}
-]
-
-# --- 4. DISPLAY WITH INDIVIDUAL BETTING BARS ---
-tab1, tab2 = st.tabs(["🏀 NBA Quarters (Overs)", "⚽ Elite Football (Overs)"])
-
-def display_overs_bar(game_name, market, odds):
-    """Generates a dedicated betting bar for an 'Over' market."""
-    stake, payout = engine.calculate_results(odds)
+# --- 5. BETTING BAR FUNCTION ---
+def render_betting_bar(game):
+    stake, payout = engine.get_bet_logic(st.session_state.cycle_loss, game['odds'])
     
     with st.container():
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
-        with col1:
-            st.markdown(f"**{game_name}**")
-            st.markdown(f"<span style='color:green;'>📈 {market}</span>", unsafe_allow_html=True)
-        with col2:
-            st.metric("Odds", f"{odds}")
-        with col3:
-            if isinstance(stake, float):
-                st.metric("Bet Stake", f"${stake}")
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+        c1.markdown(f"**{game['match']}**\n\n<span style='color:green;'>📈 {game['market']}</span>", unsafe_allow_html=True)
+        c2.metric("Odds", f"{game['odds']}")
+        
+        if isinstance(stake, float):
+            c3.metric("Stake", f"${stake}")
+            # The "I BET ON IT" Button
+            if st.session_state.active_bet == game['id']:
+                c4.warning("🎯 BET ACTIVE")
+                res_col1, res_col2 = c4.columns(2)
+                if res_col1.button("✅ WIN", key=f"w_{game['id']}"):
+                    st.session_state.cycle_loss = 0.0
+                    st.session_state.active_bet = None
+                    st.balloons()
+                    st.rerun()
+                if res_col2.button("❌ LOSS", key=f"l_{game['id']}"):
+                    st.session_state.cycle_loss += stake
+                    st.session_state.active_bet = None
+                    st.rerun()
+            elif st.session_state.active_bet is None:
+                if c4.button("🚀 I BET ON IT", key=f"btn_{game['id']}"):
+                    st.session_state.active_bet = game['id']
+                    st.rerun()
             else:
-                st.error(stake)
-        with col4:
-            if isinstance(payout, float):
-                st.metric("Payout on Win", f"${payout}")
-                next_loss = round(acc_loss + stake, 2)
-                st.warning(f"If Loss: Next Cycle Loss = ${next_loss}")
+                c4.info("Finish active bet first")
+        else:
+            c3.error(stake)
         st.markdown("---")
 
+# --- 6. DASHBOARD TABS ---
+tab1, tab2 = st.tabs(["🏀 NBA Quarters", "⚽ Elite Football"])
+
 with tab1:
-    st.subheader("NBA Playoff: Pace-Based Overs")
-    for game in nba_feed:
-        display_overs_bar(game['match'], f"{game['stage']} {game['market']}", game['odds'])
-
+    for g in nba_feed: render_betting_bar(g)
 with tab2:
-    st.subheader("Elite Football: High-Volume Offensive Markets")
-    for match in football_feed:
-        display_overs_bar(match['match'], f"{match['league']} {match['market']}", match['odds'])
-
-# HISTORY LOG
-st.subheader("📜 Cycle History")
-if 'log' not in st.session_state: st.session_state.log = []
-c1, c2 = st.columns(2)
-if c1.button("✅ WIN: Reset to Base Stake"):
-    st.session_state.log.append("WIN: Cycle Cleared")
-    st.balloons()
-if c2.button("❌ LOSS: Trigger Martingale"):
-    st.session_state.log.append(f"LOSS: Active Loss ${acc_loss}")
-st.write(st.session_state.log)
+    for g in foot_feed: render_betting_bar(g)
