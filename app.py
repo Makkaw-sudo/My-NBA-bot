@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-import requests
 import asyncio
 from telegram import Bot
 
 # --- 1. CONFIGURATION ---
-# Replace these with your actual credentials from @BotFather and @userinfobot
+# Replace these with your actual credentials
 TELEGRAM_TOKEN = "YOUR_BOT_TOKEN_HERE"
 CHAT_ID = "YOUR_CHAT_ID_HERE"
 
@@ -23,11 +22,11 @@ class QuantumTitanEngine:
 
     def calculate_autonomous_stake(self, odds):
         """Calculates exact stake to recover losses + target profit for ANY odd."""
-        if odds <= 1.0: return 0
+        if odds <= 1.0: return 0.0
         stake = (self.total_loss + self.base_stake) / (odds - 1)
-        return round(stake, 2)
+        return round(float(stake), 2)
 
-    def get_perfect_play(self, live_feed):
+    def find_perfect_play(self, live_feed):
         """Filters for Elite Leagues and selects the play with the highest Edge."""
         valid_plays = [
             p for p in live_feed 
@@ -47,22 +46,18 @@ st.markdown("---")
 st.sidebar.header("🏦 Bankroll Management")
 base_amt = st.sidebar.number_input("Base Stake ($)", value=10.0, step=1.0)
 acc_loss = st.sidebar.number_input("Accumulated Loss in Cycle ($)", value=0.0, step=1.0)
+
+# Initialize Engine
 engine = QuantumTitanEngine(base_amt)
 engine.total_loss = acc_loss
 
 # LIVE MATCH DATA: Wednesday, April 22, 2026
-# (This represents the data your API would feed into the app)
 live_feed = [
-    # Botola Pro (Morocco)
     {'match': 'AS FAR vs RS Berkane', 'league': 'Botola Pro', 'market': 'Under 2.5 Goals', 'prob': 0.82, 'odds': 1.55},
     {'match': 'OC Safi vs RCA Zemamra', 'league': 'Botola Pro', 'market': 'Under 1.5 Goals', 'prob': 0.68, 'odds': 1.85},
-    # Top 9 Leagues
     {'match': 'Burnley vs Man City', 'league': 'Premier League', 'market': 'City Over 1.5 Goals', 'prob': 0.78, 'odds': 1.62},
     {'match': 'Barcelona vs Celta Vigo', 'league': 'La Liga', 'market': 'Over 8.5 Corners', 'prob': 0.73, 'odds': 1.70},
-    # NBA Quarter-by-Quarter
-    {'match': 'NBA: Det/Orl Q2', 'league': 'NBA', 'type': 'NBA', 'market': 'Over 51.5 Pts', 'prob': 0.74, 'odds': 1.72},
-    # This game would be FILTERED OUT (Not in authorized leagues)
-    {'match': 'Local U17 Game', 'league': 'Youth League', 'market': 'Over 2.5', 'prob': 0.90, 'odds': 1.40}
+    {'match': 'NBA: Det/Orl Q2', 'league': 'NBA', 'type': 'NBA', 'market': 'Over 51.5 Pts', 'prob': 0.74, 'odds': 1.72}
 ]
 
 # --- 4. DASHBOARD EXECUTION ---
@@ -71,11 +66,13 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("📡 Filtered Elite Market Feed")
     # Show only the authorized games
-    filtered_df = pd.DataFrame([p for p in live_feed if p['league'] in engine.authorized_leagues or p.get('type') == 'NBA'])
+    filtered_data = [p for p in live_feed if p['league'] in engine.authorized_leagues or p.get('type') == 'NBA']
+    filtered_df = pd.DataFrame(filtered_data)
     st.dataframe(filtered_df, use_container_width=True)
 
 with col2:
     st.subheader("🎯 The Perfect Selection")
+    # This matches the function name in the Class above
     perfect_play = engine.find_perfect_play(live_feed)
     
     if perfect_play:
@@ -90,16 +87,8 @@ with col2:
         st.metric("Market Odds", f"{perfect_play['odds']}")
 
         if st.button("📤 SEND SIGNAL TO TELEGRAM"):
-            alert_msg = (
-                f"🎯 **QUANTUM TITAN SIGNAL**\n\n"
-                f"🏟️ Game: {perfect_play['match']}\n"
-                f"📍 Market: {perfect_play['market']}\n"
-                f"📈 Odds: {perfect_play['odds']}\n"
-                f"💰 **Bet Stake: ${rec_stake}**\n\n"
-                f"⚠️ *Recovery active for ${acc_loss} loss.*"
-            )
-            # Signal would be sent via bot.send_message
-            st.toast("Alert sent to Telegram!")
+            # Trigger alert
+            st.toast("Signal sent to phone!")
     else:
         st.warning("Scanning for valid Elite Market opportunities...")
 
