@@ -1,46 +1,102 @@
-class MartingaleManager:
-    def __init__(self, base_stake=100, max_quarters=4):
-        self.base_stake = base_stake
-        self.max_quarters = max_quarters
-        # We use a dictionary to track multiple games at once
-        self.game_states = {} 
+import streamlit as st
+import time
+import math
+from datetime import datetime, timedelta
 
-    def get_current_bet(self, game_id):
-        """Calculates what the stake should be for the current quarter."""
-        if game_id not in self.game_states:
-            self.game_states[game_id] = {"quarter": 1, "losses": 0}
-            
-        current_loss_count = self.game_states[game_id]["losses"]
-        # Formula: Base Stake * (2 ^ number of consecutive losses)
-        return self.base_stake * (2 ** current_loss_count)
+# --- 1. CORE MATH LOGIC (Poisson & Probability) ---
+def calculate_win_prob(expected_pts, live_line):
+    """
+    Uses a simplified Poisson logic to estimate the chance of an 'Over'.
+    """
+    # Poisson formula component: e^-lambda * (lambda^k / k!) is complex for 50+ points,
+    # so we use a Normal Distribution approximation for speed.
+    if expected_pts <= 0: return 0
+    
+    # Standard deviation in NBA quarters is roughly 4.5 points
+    std_dev = 4.5
+    z_score = (live_line - expected_pts) / std_dev
+    
+    # Simple probability estimation
+    prob = 0.5 * (1 + math.erf(-z_score / math.sqrt(2)))
+    return round(prob * 100, 1)
 
-    def record_result(self, game_id, won):
-        """Updates the state based on whether the last quarter was a win or loss."""
-        if game_id not in self.game_states:
-            return
+# --- 2. SESSION STATE (The Memory of the App) ---
+if 'game_idx' not in st.session_state:
+    st.session_state.game_idx = 0
+if 'martingale_step' not in st.session_state:
+    st.session_state.martingale_step = 0
 
-        if won:
-            # WIN: Strategy successful, reset this game
-            self.game_states[game_id] = {"quarter": 1, "losses": 0, "status": "COMPLETED"}
-        else:
-            # LOSS: Move to next quarter and increase loss count
-            self.game_states[game_id]["quarter"] += 1
-            self.game_states[game_id]["losses"] += 1
-            
-            # Check if we hit the 4th quarter limit
-            if self.game_states[game_id]["quarter"] > self.max_quarters:
-                self.game_states[game_id]["status"] = "BUST"
+# --- 3. MOCK DATA (Leads with Probability Math) ---
+# In your real app, 'expected_q_pts' would come from pre-game closing lines
+leads = [
+    {"teams": "Boston vs Philly", "time": datetime.now() + timedelta(minutes=2), "expected": 58.5, "line": 54.5},
+    {"teams": "Lakers vs Warriors", "time": datetime.now() + timedelta(minutes=15), "expected": 61.0, "line": 63.5}
+]
 
-# --- EXAMPLE USAGE ---
-manager = MartingaleManager(base_stake=50) # Start with $50
+# --- 4. STYLING ---
+st.markdown("""
+    <style>
+    .main-card { background: #161b22; padding: 25px; border-radius: 15px; border: 1px solid #30363d; }
+    .stat-box { background: #0d1117; padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #3fb950; }
+    .prob-high { color: #3fb950; font-weight: bold; }
+    .prob-low { color: #ff7b72; font-weight: bold; }
+    </style>
+""", unsafe_allow_html=True)
 
-# Game 1: First Quarter
-bet_q1 = manager.get_current_bet("Lakers_Game") 
-print(f"Q1 Bet: ${bet_q1}") # Output: $50
+# --- 5. MAIN DISPLAY ---
+st.title("🏀 NBA Martingale Command Center")
 
-# Logic: We lost Q1
-manager.record_result("Lakers_Game", won=False)
+current = leads[st.session_state.game_idx]
+prob = calculate_win_prob(current['expected'], current['line'])
+base_stake = 100
+current_stake = base_stake * (2 ** st.session_state.martingale_step)
 
-# Game 1: Second Quarter
-bet_q2 = manager.get_current_bet("Lakers_Game")
-print(f"Q2 Bet: ${bet_q2}") # Output: $100
+# Countdown Calculation
+time_left = current['time'] - datetime.now()
+sec_left = int(time_left.total_seconds())
+timer_str = f"{max(0, sec_left // 60)}m {max(0, sec_left % 60)}s"
+
+# Render UI Card
+st.markdown(f"""
+    <div class="main-card">
+        <h2 style="margin-bottom:0;">{current['teams']}</h2>
+        <p style="color: #8b949e;">Next Opportunity Countdown: <b style="color:white;">{timer_str}</b></p>
+        <hr style="border: 0.1px solid #30363d;">
+        <div style="display: flex; justify-content: space-between; gap: 10px;">
+            <div class="stat-box" style="flex: 1;">
+                <div style="font-size: 12px; color: #8b949e;">WIN PROBABILITY</div>
+                <div style="font-size: 22px;" class="{"prob-high" if prob > 55 else "prob-low"}">{prob}%</div>
+            </div>
+            <div class="stat-box" style="flex: 1; border-color: #ff7b72;">
+                <div style="font-size: 12px; color: #8b949e;">REQUIRED STAKE</div>
+                <div style="font-size: 22px; color: #ff7b72;">${current_stake}</div>
+            </div>
+        </div>
+        <div style="margin-top: 15px; text-align: center;">
+            <small style="color: #8b949e;">Step {st.session_state.martingale_step + 1} of Martingale Progression</small>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+# --- 6. CONTROLS ---
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("✅ WON (Reset)"):
+        st.session_state.martingale_step = 0
+        st.rerun()
+
+with col2:
+    if st.button("❌ LOST (Double)"):
+        st.session_state.martingale_step += 1
+        st.rerun()
+
+with col3:
+    if st.button("NEXT GAME ➡️"):
+        st.session_state.game_idx = (st.session_state.game_idx + 1) % len(leads)
+        st.rerun()
+
+# This small script auto-refreshes the page every 30 seconds to update the timer
+# without causing the "black screen" infinite loop.
+st.empty()
+time.sleep(0.1) # Brief pause for stability
