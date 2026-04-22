@@ -29,7 +29,7 @@ class QuantumTitanEngine:
 
 # --- 2. STREAMLIT UI ---
 st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
-st.title("🚀 QUANTUM TITAN V11")
+st.title("🚀 QUANTUM TITAN V11: Decision Dashboard")
 
 # Sidebar: Bankroll and Martingale Control
 st.sidebar.header("🏦 Bankroll Management")
@@ -40,16 +40,19 @@ engine = QuantumTitanEngine(base_amt)
 engine.total_loss = acc_loss
 
 # --- 3. LIVE MATCH DATA (APRIL 22, 2026) ---
-# Separated by quarters and elite competitions
+# Strictly separated by your required categories
 live_feed = [
-    # MOROCCO: Botola Pro
+    # --- MOROCCO: Botola Pro ---
     {'match': 'AS FAR vs RS Berkane', 'league': 'Botola Pro', 'market': 'Under 2.5 Goals', 'prob': 0.82, 'odds': 1.62},
     {'match': 'OC Safi vs RCA Zemamra', 'league': 'Botola Pro', 'market': 'Under 3.5 Live', 'prob': 0.75, 'odds': 1.55},
-    # EUROPE: Top 9 Leagues
+    
+    # --- EUROPE: Top 9 Leagues ---
     {'match': 'Burnley vs Man City', 'league': 'Premier League', 'market': 'City Over 1.5 Goals', 'prob': 0.78, 'odds': 1.60},
-    {'match': 'Barcelona vs Celta Vigo', 'league': 'La Liga', 'market': 'Over 8.5 Corners', 'prob': 0.73, 'odds': 1.68},
+    {'match': 'Bournemouth vs Leeds', 'league': 'Premier League', 'market': 'Over 8.5 Corners', 'prob': 0.72, 'odds': 1.65},
+    {'match': 'Barcelona vs Celta Vigo', 'league': 'La Liga', 'market': 'Over 2.5 Goals', 'prob': 0.73, 'odds': 1.68},
     {'match': 'PSG vs Nantes', 'league': 'Ligue 1', 'market': 'PSG Over 2.5 Goals', 'prob': 0.85, 'odds': 1.45},
-    # NBA: Quarter-by-Quarter
+    
+    # --- NBA: Quarter-by-Quarter ---
     {'match': 'NBA: Det/Orl Q1', 'type': 'NBA', 'league': 'NBA', 'market': 'Over 51.5 Pts', 'prob': 0.74, 'odds': 1.72},
     {'match': 'NBA: Det/Orl Q2', 'type': 'NBA', 'league': 'NBA', 'market': 'Under 54.5 Pts', 'prob': 0.69, 'odds': 1.80}
 ]
@@ -59,8 +62,14 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("📡 Live Elite Market Feed")
-    filtered_data = [p for p in live_feed if p['league'] in engine.authorized_leagues or p.get('type') == 'NBA']
-    st.dataframe(pd.DataFrame(filtered_data), use_container_width=True)
+    # Separation logic for the UI
+    st.write("### 🏀 NBA Quarters")
+    nba_df = pd.DataFrame([p for p in live_feed if p.get('type') == 'NBA'])
+    st.dataframe(nba_df, use_container_width=True)
+    
+    st.write("### ⚽ Top 9 Leagues & Botola Pro")
+    football_df = pd.DataFrame([p for p in live_feed if p['league'] in engine.authorized_leagues])
+    st.dataframe(football_df, use_container_width=True)
 
 with col2:
     st.subheader("🎯 The Perfect Selection")
@@ -81,4 +90,4 @@ with col2:
         st.warning("Scanning for valid Elite Market opportunities...")
 
 st.markdown("---")
-st.info("Filters Active: NBA Q1-Q4 | Top 9 Leagues | Botola Pro | Dynamic Stakes")
+st.info("Filters: NBA Q1-Q4 | Top 9 Leagues | Botola Pro | Dynamic Stakes")
