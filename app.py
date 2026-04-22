@@ -1,97 +1,101 @@
 import streamlit as st
 import pandas as pd
 
-# --- 1. THE QUANTUM PROTECTED ENGINE ---
+# --- 1. CORE ENGINE ---
 class QuantumTitanEngine:
     def __init__(self, base_stake, stop_loss, max_stake):
         self.base_stake = base_stake
         self.stop_loss = stop_loss
         self.max_stake = max_stake
         self.total_loss = 0
-        self.authorized_leagues = [
-            "Premier League", "La Liga", "Serie A", "Bundesliga", 
-            "Ligue 1", "Saudi Pro League", "Liga Portugal", 
-            "Eredivisie", "MLS", "Botola Pro"
-        ]
 
-    def calculate_protected_stake(self, odds):
-        """Calculates stake with Stop-Loss and Max-Stake protections."""
+    def calculate_results(self, odds):
+        """Calculates stake, potential profit, and the loss to carry forward."""
         if self.total_loss >= self.stop_loss:
-            return "STOP_LOSS_REACHED"
-        if odds <= 1.0: return 0.0
+            return None, "STOP-LOSS HIT"
         
-        # Dynamic Martingale Formula
-        required_stake = (self.total_loss + self.base_stake) / (odds - 1)
+        # Calculate Martingale Stake
+        stake = (self.total_loss + self.base_stake) / (odds - 1)
         
-        if required_stake > self.max_stake:
-            return "MAX_STAKE_EXCEEDED"
+        if stake > self.max_stake:
+            return None, "LIMIT EXCEEDED"
             
-        return round(float(required_stake), 2)
+        payout = stake * odds
+        return round(float(stake), 2), round(float(payout), 2)
 
-# --- 2. UI CONFIGURATION ---
+# --- 2. UI SETUP ---
 st.set_page_config(page_title="QUANTUM TITAN V11", layout="wide")
-st.title("🚀 QUANTUM TITAN V11: Fully Separated & Protected")
+st.title("🚀 QUANTUM TITAN V11: Execution Dashboard")
 
-# SIDEBAR: RISK MANAGEMENT
-st.sidebar.header("🛡️ Security & Bankroll")
+# SIDEBAR: Risk Management
+st.sidebar.header("🛡️ Risk & Recovery")
 base_amt = st.sidebar.number_input("Base Stake ($)", value=10.0)
 acc_loss = st.sidebar.number_input("Current Cycle Loss ($)", value=0.0)
-max_loss = st.sidebar.number_input("STOP-LOSS Limit ($)", value=200.0)
-bookie_cap = st.sidebar.number_input("MAX STAKE Limit ($)", value=150.0)
+max_loss = st.sidebar.number_input("Stop-Loss Limit ($)", value=200.0)
+bookie_cap = st.sidebar.number_input("Max Bet Limit ($)", value=150.0)
 
 engine = QuantumTitanEngine(base_amt, max_loss, bookie_cap)
 engine.total_loss = acc_loss
 
-# --- 3. SEPARATED LIVE DATA (APRIL 22, 2026) ---
+# --- 3. SEPARATED MATCH DATA ---
 nba_feed = [
-    {'Game': 'Orlando @ Detroit', 'Stage': 'Q1', 'Market': 'Over 51.5', 'Prob': 0.74, 'Odds': 1.72},
-    {'Game': 'Orlando @ Detroit', 'Stage': 'Q2', 'Market': 'Under 54.5', 'Prob': 0.69, 'Odds': 1.80}
+    {'match': 'Orlando @ Detroit', 'stage': 'Q1', 'market': 'Over 51.5', 'odds': 1.72},
+    {'match': 'Phoenix @ OKC', 'stage': 'Q1', 'market': 'Over 53.5', 'odds': 1.68}
 ]
 
 football_feed = [
-    {'Match': 'AS FAR vs RS Berkane', 'League': 'Botola Pro', 'Market': 'Under 2.5', 'Prob': 0.82, 'Odds': 1.62},
-    {'Match': 'Man City @ Burnley', 'League': 'Premier League', 'Market': 'City Over 1.5', 'Prob': 0.78, 'Odds': 1.60},
-    {'Match': 'Celta Vigo @ Barcelona', 'League': 'La Liga', 'Market': 'Over 8.5 Corners', 'Prob': 0.73, 'Odds': 1.68}
+    {'match': 'AS FAR vs RS Berkane', 'league': 'Botola Pro', 'market': 'Under 2.5', 'odds': 1.62},
+    {'match': 'Man City @ Burnley', 'league': 'Premier League', 'market': 'City Over 1.5', 'odds': 1.60}
 ]
 
-# --- 4. THE DASHBOARD ---
-tab1, tab2, tab3 = st.tabs(["🏀 NBA Quarters", "⚽ Elite Football", "📜 History"])
+# --- 4. DISPLAY WITH INDIVIDUAL BETTING BARS ---
+tab1, tab2 = st.tabs(["🏀 NBA Quarters", "⚽ Elite Football"])
+
+def display_betting_bar(game_name, market, odds):
+    """Generates the individual betting action bar for each game."""
+    stake, payout = engine.calculate_results(odds)
+    
+    with st.container():
+        # High-visibility Betting Bar
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
+        
+        with col1:
+            st.markdown(f"**{game_name}**")
+            st.caption(f"Target: {market}")
+        
+        with col2:
+            st.metric("Odds", f"{odds}")
+        
+        with col3:
+            if isinstance(stake, float):
+                st.metric("Bet Stake", f"${stake}")
+            else:
+                st.error(stake)
+        
+        with col4:
+            if isinstance(payout, float):
+                st.metric("Potential Payout", f"${payout}")
+                next_loss = acc_loss + stake
+                st.warning(f"If Loss: Apply ${next_loss} to next event")
+        st.markdown("---")
 
 with tab1:
-    st.subheader("NBA Playoff: Quarter-by-Quarter")
-    st.table(nba_feed)
-    best_nba = nba_feed[0]
-    stake = engine.calculate_protected_stake(best_nba['Odds'])
-    
-    if isinstance(stake, str):
-        st.error(f"🚨 {stake}")
-    else:
-        st.success(f"🎯 **Signal:** {best_nba['Game']} {best_nba['Stage']} | **Stake: ${stake}**")
-        st.caption("⚠️ Verification: If the live bookie line is > 1.5 pts off, DISCARD SIGNAL.")
+    st.subheader("NBA Live Signals")
+    for game in nba_feed:
+        display_betting_bar(game['match'], f"{game['stage']} {game['market']}", game['odds'])
 
 with tab2:
-    st.subheader("Top 9 Leagues & Botola Pro")
-    st.table(football_feed)
-    best_foot = football_feed[0] # AS FAR vs RS Berkane
-    f_stake = engine.calculate_protected_stake(best_foot['Odds'])
-    
-    if isinstance(f_stake, str):
-        st.error(f"🚨 {f_stake}")
-    else:
-        st.info(f"🎯 **Signal:** {best_foot['Match']} ({best_foot['League']}) | **Stake: ${f_stake}**")
+    st.subheader("Elite Football Signals")
+    for match in football_feed:
+        display_betting_bar(match['match'], f"{match['league']} {match['market']}", match['odds'])
 
-with tab3:
-    st.subheader("Cycle Tracking")
-    if 'history' not in st.session_state:
-        st.session_state.history = []
-    
-    if st.button("Log Current Bet as WIN"):
-        st.session_state.history.append("✅ WIN")
-        st.balloons()
-    if st.button("Log Current Bet as LOSS"):
-        st.session_state.history.append("❌ LOSS")
-    
-    st.write(st.session_state.history)
-
-st.markdown("---")
-st.caption("Active Filters: NBA Quarters | Premier League, La Liga, Serie A, Bundesliga, Ligue 1, Saudi Pro, Liga Portugal, Eredivisie, MLS | Botola Pro")
+# HISTORY LOG
+st.subheader("📜 Cycle History")
+if 'log' not in st.session_state: st.session_state.log = []
+c1, c2 = st.columns(2)
+if c1.button("✅ WIN: Reset Cycle"):
+    st.session_state.log.append("WIN: Cycle Reset")
+    st.balloons()
+if c2.button("❌ LOSS: Proceed to Martingale"):
+    st.session_state.log.append(f"LOSS: Carry ${acc_loss} forward")
+st.write(st.session_state.log)
