@@ -1,93 +1,98 @@
 import streamlit as st
 import math
 
-# --- 1. CONFIGURATION ---
-BANKROLL = 5000.00  # Total money you have for betting
-MAX_RISK_PCT = 0.05 # Never risk more than 5% of bankroll in one series
-BASE_UNIT = 100.00  # Your starting bet size
+# --- CONFIGURATION (Change these to match your wallet) ---
+BANKROLL = 5000.00
+BASE_BET = 100.00
+MAX_RISK_LIMIT = 0.15 # 15% of bankroll is the absolute "Danger" limit
 
-# --- 2. SAFETY & PROFIT CALCULATOR ---
-def get_safe_instruction(step, odds, target_line):
-    # Calculate Martingale progression
-    current_stake = BASE_UNIT * (2 ** step)
+# --- MATH ENGINE ---
+def calculate_safety_and_profit(step, odds, line, expected):
+    # Martingale Stake
+    current_stake = BASE_BET * (2 ** step)
     
-    # Calculate DANGER LEVEL
-    total_at_stake = sum([BASE_UNIT * (2**i) for i in range(step + 1)])
-    is_dangerous = total_at_stake > (BANKROLL * MAX_RISK_PCT)
+    # Total money spent so far in this game
+    total_wagered = sum([BASE_BET * (2**i) for i in range(step + 1)])
     
-    # Profit Math
+    # Win Probability (Normal Distribution Approximation)
+    std_dev = 4.5
+    z_score = (line - expected) / std_dev
+    prob = 0.5 * (1 + math.erf(-z_score / math.sqrt(2)))
+    
+    # Profit Calculation
     potential_return = current_stake * odds
-    net_profit = potential_return - total_at_stake
+    net_profit = potential_return - total_wagered
     
-    return {
-        "stake": current_stake,
-        "net_profit": net_profit,
-        "danger": is_dangerous,
-        "total_at_stake": total_at_stake
-    }
+    # Danger Detection
+    is_danger = total_wagered > (BANKROLL * MAX_RISK_LIMIT)
+    
+    return round(prob * 100, 1), current_stake, round(net_profit, 2), is_danger
 
-# --- 3. SESSION STATE ---
+# --- APP SETUP ---
+st.set_page_config(page_title="NBA EDGE COMMAND", layout="centered")
+
 if 'step' not in st.session_state: st.session_state.step = 0
 
-# --- 4. STYLE ---
-st.markdown("""
-    <style>
-    .safety-box { padding: 20px; border-radius: 12px; border: 2px solid; margin-bottom: 20px; text-align: center; }
-    .safe { border-color: #3fb950; background: rgba(63, 185, 80, 0.05); }
-    .danger { border-color: #ff7b72; background: rgba(255, 123, 114, 0.1); animation: blink 1s infinite; }
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-    .big-value { font-size: 32px; font-weight: bold; display: block; }
-    </style>
-""", unsafe_allow_html=True)
+# --- LIVE DATA (This represents your actual game leads) ---
+# When you have a new game, you update these 4 values:
+game_name = "Lakers vs Warriors"
+expected_pts = 61.5
+current_line = 54.5 # The line the bookie gives you
+current_odds = 2.3  # The odds the bookie gives you
 
-# --- 5. DASHBOARD ---
-st.title("🛡️ Risk-Adjusted Betting Command")
+# Run Math
+prob, stake, profit, danger = calculate_safety_and_profit(
+    st.session_state.step, current_odds, current_line, expected_pts
+)
 
-# Inputs (These would come from your live API/Scraper)
-current_game = "Lakers vs Warriors"
-current_target = 54.5
-current_odds = 2.3  # Example high odds
+# --- DISPLAY ---
+st.title("🛡️ NBA Strategy Center")
 
-# Get logic results
-data = get_safe_instruction(st.session_state.step, current_odds, current_target)
-
-# Display Danger Warning if risk is too high
-status_class = "danger" if data['danger'] else "safe"
-status_text = "⚠️ HIGH RISK - REDUCE STAKE" if data['danger'] else "✅ SAFE MARGIN"
+# Danger Styling
+status_color = "#ff7b72" if danger else "#3fb950"
+bg_color = "rgba(255, 123, 114, 0.1)" if danger else "rgba(63, 185, 80, 0.05)"
 
 st.markdown(f"""
-    <div class="safety-box {status_class}">
-        <small style="color: #8b949e;">{status_text}</small>
-        <div style="margin: 10px 0;">
-            <span style="color: #8b949e;">BET OVER:</span>
-            <span class="big-value" style="color: white;">{current_target} @ {current_odds}</span>
+    <div style="border: 2px solid {status_color}; background: {bg_color}; padding: 25px; border-radius: 15px; text-align: center;">
+        <h2 style="color: white; margin-bottom: 5px;">{game_name}</h2>
+        <p style="color: #8b949e; margin-bottom: 20px;">Martingale Step: {st.session_state.step + 1}</p>
+        
+        <div style="background: #0d1117; border: 1px dashed {status_color}; padding: 15px; border-radius: 10px;">
+            <div style="color: #8b949e; font-size: 14px;">EXACT INSTRUCTION:</div>
+            <div style="font-size: 28px; font-weight: bold; color: white;">
+                BET <span style="color: {status_color};">OVER {current_line}</span>
+            </div>
+            <div style="color: #8b949e;">ODDS: {current_odds}</div>
         </div>
-        <div style="display: flex; justify-content: space-around;">
+
+        <div style="display: flex; justify-content: space-around; margin-top: 20px;">
             <div>
-                <small style="color: #8b949e;">SUGGESTED STAKE</small>
-                <div style="font-size: 24px; color: #ff7b72; font-weight: bold;">${data['stake']}</div>
+                <small style="color: #8b949e;">WIN PROBABILITY</small>
+                <div style="font-size: 24px; font-weight: bold; color: {status_color};">{prob}%</div>
+            </div>
+            <div>
+                <small style="color: #8b949e;">REQUIRED STAKE</small>
+                <div style="font-size: 24px; font-weight: bold; color: white;">${stake}</div>
             </div>
             <div>
                 <small style="color: #8b949e;">NET PROFIT</small>
-                <div style="font-size: 24px; color: #3fb950; font-weight: bold;">+${data['net_profit']:.2f}</div>
+                <div style="font-size: 24px; font-weight: bold; color: #3fb950;">+${profit}</div>
             </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# --- 6. EMOTIONLESS CONTROLS ---
-st.write(f"**Series Exposure:** ${data['total_at_stake']} / ${BANKROLL}")
-
+# --- EMOTIONLESS BUTTONS ---
+st.write("")
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("✅ WIN (Restart)", use_container_width=True):
+    if st.button("✅ WIN (Reset Stake)", use_container_width=True):
         st.session_state.step = 0
         st.rerun()
 with col2:
-    if st.button("❌ LOSS (Next Step)", use_container_width=True):
+    if st.button("❌ LOSS (Double Stake)", use_container_width=True):
         st.session_state.step += 1
         st.rerun()
 
-if st.button("Emergency Reset"):
-    st.session_state.step = 0
-    st.rerun()
+if danger:
+    st.error("🚨 STOP! Your bankroll is at high risk. Do not double again.")
