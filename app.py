@@ -1,43 +1,46 @@
-import streamlit as st
+class MartingaleManager:
+    def __init__(self, base_stake=100, max_quarters=4):
+        self.base_stake = base_stake
+        self.max_quarters = max_quarters
+        # We use a dictionary to track multiple games at once
+        self.game_states = {} 
 
-# 1. Set up the page layout
-st.set_page_config(page_title="Sports Betting Leads", layout="wide")
+    def get_current_bet(self, game_id):
+        """Calculates what the stake should be for the current quarter."""
+        if game_id not in self.game_states:
+            self.game_states[game_id] = {"quarter": 1, "losses": 0}
+            
+        current_loss_count = self.game_states[game_id]["losses"]
+        # Formula: Base Stake * (2 ^ number of consecutive losses)
+        return self.base_stake * (2 ** current_loss_count)
 
-# 2. Define a function to render your HTML cards properly
-def render_card(game_name, edge_val, pace_proj, live_score):
-    # This is the string containing your HTML/CSS
-    card_template = f"""
-    <div style="background-color: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px; font-family: sans-serif;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div style="color: #8b949e; font-size: 14px; font-weight: bold; text-transform: uppercase;">
-                STREAMING // {game_name}
-            </div>
-            <div style="background-color: rgba(63, 185, 80, 0.1); border: 1px solid #3fb950; border-radius: 12px; padding: 4px 12px; color: #3fb950; text-align: center;">
-                <div style="font-size: 10px; font-weight: bold;">EDGE:</div>
-                <div style="font-size: 14px; font-weight: bold;">{edge_val}%</div>
-            </div>
-        </div>
-        
-        <div style="margin-top: 15px; padding: 15px 0; border-top: 1px solid #30363d;">
-            <div style="color: #3fb950; font-size: 18px; font-weight: bold; margin-bottom: 10px;">BET CHECKED</div>
-            <div style="color: #f0f6fc; font-family: monospace; font-size: 14px;">
-                PACE_PROJ: {pace_proj} | LIVE: {live_score}
-            </div>
-        </div>
-    </div>
-    """
-    # THE FIX: This renders the string as actual HTML
-    st.markdown(card_template, unsafe_allow_html=True)
+    def record_result(self, game_id, won):
+        """Updates the state based on whether the last quarter was a win or loss."""
+        if game_id not in self.game_states:
+            return
 
-# 3. Example: Displaying multiple leads
-st.title("Live Betting Dashboard")
+        if won:
+            # WIN: Strategy successful, reset this game
+            self.game_states[game_id] = {"quarter": 1, "losses": 0, "status": "COMPLETED"}
+        else:
+            # LOSS: Move to next quarter and increase loss count
+            self.game_states[game_id]["quarter"] += 1
+            self.game_states[game_id]["losses"] += 1
+            
+            # Check if we hit the 4th quarter limit
+            if self.game_states[game_id]["quarter"] > self.max_quarters:
+                self.game_states[game_id]["status"] = "BUST"
 
-# Mock data
-leads = [
-    {"teams": "Boston Celtics vs Philadelphia 76ers", "edge": 2.6, "pace": 59.3, "score": "123-98"},
-    {"teams": "Detroit Pistons vs Orlando Magic", "edge": 2.6, "pace": 61.2, "score": "45-52"}
-]
+# --- EXAMPLE USAGE ---
+manager = MartingaleManager(base_stake=50) # Start with $50
 
-# Loop through and display
-for lead in leads:
-    render_card(lead['teams'], lead['edge'], lead['pace'], lead['score'])
+# Game 1: First Quarter
+bet_q1 = manager.get_current_bet("Lakers_Game") 
+print(f"Q1 Bet: ${bet_q1}") # Output: $50
+
+# Logic: We lost Q1
+manager.record_result("Lakers_Game", won=False)
+
+# Game 1: Second Quarter
+bet_q2 = manager.get_current_bet("Lakers_Game")
+print(f"Q2 Bet: ${bet_q2}") # Output: $100
